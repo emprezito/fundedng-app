@@ -42,3 +42,7 @@ dist/
 /.git-rewrite/
 scripts/debug-telegram.ts
 
+
+# Supabase CLI local state
+supabase/.temp/
+
