@@ -1,0 +1,1 @@
+ALTER TABLE public.trader_accounts ADD COLUMN IF NOT EXISTS phase2_requested_at timestamp with time zone;

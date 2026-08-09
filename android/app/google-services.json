@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "354963155380",
+    "project_id": "fundedng-ccfb0",
+    "storage_bucket": "fundedng-ccfb0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:354963155380:android:11ce783a1f9b8416016ae1",
+        "android_client_info": {
+          "package_name": "fun.fundedng.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlw90pgwYVBpFGQZ5h6T4YU7lAWfNHLsw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

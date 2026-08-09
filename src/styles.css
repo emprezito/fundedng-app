@@ -1,0 +1,206 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-display: 'Montserrat', sans-serif;
+  --font-body: 'Poppins', sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-glow: var(--primary-glow);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-info: var(--info);
+  --color-gold: var(--gold);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+}
+
+:root {
+  --radius: 0.5rem;
+
+  /* FundedNG light trading theme */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.18 0 0);
+
+  --surface: oklch(0.98 0 0);
+  --surface-elevated: oklch(0.96 0 0);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0 0);
+
+  /* Deep emerald primary on white — readable + on-brand */
+  --primary: oklch(0.58 0.18 150);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-glow: oklch(0.58 0.18 150 / 0.18);
+
+  --secondary: oklch(0.96 0 0);
+  --secondary-foreground: oklch(0.20 0 0);
+
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+
+  --accent: oklch(0.58 0.18 150 / 0.10);
+  --accent-foreground: oklch(0.42 0.16 150);
+
+  --destructive: oklch(0.55 0.24 25);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --warning: oklch(0.62 0.16 60);
+  --success: oklch(0.58 0.18 150);
+  --info: oklch(0.55 0.17 240);
+  --gold: oklch(0.65 0.16 75);
+
+  --border: oklch(0.92 0 0);
+  --input: oklch(0.94 0 0);
+  --ring: oklch(0.58 0.18 150);
+
+  --chart-1: oklch(0.58 0.18 150);
+  --chart-2: oklch(0.55 0.17 240);
+  --chart-3: oklch(0.65 0.16 75);
+  --chart-4: oklch(0.62 0.16 60);
+  --chart-5: oklch(0.55 0.24 25);
+}
+
+.dark {
+  /* FundedNG dark trading theme — high readability on near-black */
+  --background: oklch(0.15 0.01 160);
+  --foreground: oklch(0.97 0 0);
+
+  --surface: oklch(0.18 0.01 160);
+  --surface-elevated: oklch(0.22 0.01 160);
+
+  --card: oklch(0.18 0.01 160);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.18 0.01 160);
+  --popover-foreground: oklch(0.97 0 0);
+
+  /* Brighter emerald for contrast on dark surfaces */
+  --primary: oklch(0.78 0.20 152);
+  --primary-foreground: oklch(0.14 0.02 160);
+  --primary-glow: oklch(0.78 0.20 152 / 0.35);
+
+  --secondary: oklch(0.24 0.01 160);
+  --secondary-foreground: oklch(0.97 0 0);
+
+  --muted: oklch(0.22 0.01 160);
+  --muted-foreground: oklch(0.72 0.01 160);
+
+  --accent: oklch(0.78 0.20 152 / 0.18);
+  --accent-foreground: oklch(0.88 0.18 152);
+
+  --destructive: oklch(0.65 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --warning: oklch(0.75 0.16 70);
+  --success: oklch(0.78 0.20 152);
+  --info: oklch(0.70 0.17 240);
+  --gold: oklch(0.78 0.16 80);
+
+  --border: oklch(0.28 0.01 160);
+  --input: oklch(0.26 0.01 160);
+  --ring: oklch(0.78 0.20 152);
+
+  --chart-1: oklch(0.78 0.20 152);
+  --chart-2: oklch(0.70 0.17 240);
+  --chart-3: oklch(0.78 0.16 80);
+  --chart-4: oklch(0.75 0.16 70);
+  --chart-5: oklch(0.65 0.22 25);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html, body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: 'Poppins', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .font-display {
+    font-family: 'Montserrat', sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  /* Slim scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--color-background); }
+  ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-primary); }
+}
+
+@layer utilities {
+  .text-glow {
+    text-shadow: 0 0 24px var(--primary-glow);
+  }
+  .glow-primary {
+    box-shadow: 0 0 30px var(--primary-glow);
+  }
+  .gradient-primary {
+    background: linear-gradient(135deg, var(--primary), oklch(0.78 0.22 155));
+  }
+  .gradient-radial-primary {
+    background: radial-gradient(ellipse at top, var(--primary-glow), transparent 60%);
+  }
+  .noise-overlay::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    z-index: 9999;
+  }
+  .grid-bg {
+    background-image:
+      linear-gradient(var(--color-border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.4s ease forwards; }
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 20px var(--primary-glow); }
+  50% { box-shadow: 0 0 40px var(--primary-glow); }
+}
+.animate-pulse-glow { animation: pulseGlow 2.5s ease-in-out infinite; }

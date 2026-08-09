@@ -1,0 +1,2 @@
+export const SQUAD_PUBLIC_KEY =
+  "pk_c1ef7802916384640cc5540e64cb9f75cf3e6785";

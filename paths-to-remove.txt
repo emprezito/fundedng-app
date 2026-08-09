@@ -1,0 +1,4 @@
+dist/server/.dev.vars
+fundedng-monitor/.env
+wrangler.jsonc
+scripts/debug-telegram.ts
