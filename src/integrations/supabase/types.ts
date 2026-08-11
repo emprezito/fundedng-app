@@ -1383,6 +1383,7 @@ export type Database = {
         Args: { p_affiliate_id: string }
         Returns: number
       }
+      get_total_payouts: { Args: never; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

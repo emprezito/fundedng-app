@@ -414,9 +414,9 @@ def check_weekend_violations(open_positions: list) -> list:
 
 
 # Position group window: positions opened within this many seconds of the
-# FIRST position in a batch count as a single conceptual position.
+# FIRST same-direction position in a batch are checked for rapid lot-splitting.
 POSITION_GROUP_WINDOW_SECS = 60
-# Hard cap on conceptual positions per symbol.
+# Hard cap on RAW open positions per symbol per direction (buy/sell).
 MAX_POSITIONS_PER_SYMBOL = 2
 
 
@@ -425,9 +425,12 @@ def check_position_violations(open_positions: list) -> list:
     Detect position-manipulation violations from currently open positions.
 
     Rules enforced here:
-      - Maximum 2 open positions per symbol per account. Positions opened on
-        the same symbol within 60 seconds of the first position in a batch are
-        treated as a single position (anti lot-splitting).
+      - Maximum 2 open positions per symbol per direction (buy/sell), counting
+        RAW positions. Timing is irrelevant -- opening 10 buy positions within
+        60 seconds is still 10 positions and breaches the 2-position cap.
+      - Rapid lot-splitting: opening 2+ same-direction positions on a symbol
+        within POSITION_GROUP_WINDOW_SECS (60s) of the batch's first entry is
+        itself a violation, even when under the 2-position cap.
       - Averaging down is prohibited: adding to a position at a worse price
         than an existing same-direction position on the same symbol.
 
@@ -442,26 +445,44 @@ def check_position_violations(open_positions: list) -> list:
         by_symbol.setdefault(p["symbol"], []).append(p)
 
     for symbol, positions in by_symbol.items():
-        positions = sorted(positions, key=lambda p: p["open_time"])
+        stacking_breach = False
 
-        # Group positions opened within the window of the batch's FIRST entry
-        # into one conceptual position.
-        conceptual: list[list[dict]] = []
-        for pos in positions:
-            if conceptual and pos["open_time"] - conceptual[-1][0]["open_time"] <= POSITION_GROUP_WINDOW_SECS:
-                conceptual[-1].append(pos)
-            else:
-                conceptual.append([pos])
+        for direction, same_dir in (
+            ("buy",  [p for p in positions if p["type"] == 0]),
+            ("sell", [p for p in positions if p["type"] == 1]),
+        ):
+            same_dir = sorted(same_dir, key=lambda p: p["open_time"])
+            if not same_dir:
+                continue
 
-        # Cap: more than 2 conceptual positions on a symbol
-        if len(conceptual) > MAX_POSITIONS_PER_SYMBOL:
-            violations.append({
-                "type":           "max_positions",
-                "symbol":         symbol,
-                "tickets":        [str(p["ticket"]) for grp in conceptual for p in grp],
-                "position_count": len(conceptual),
-                "direction":      "",
-            })
+            # Primary: raw same-direction position cap per symbol. Timing is
+            # irrelevant -- 10 positions opened in 60s still breaches.
+            if len(same_dir) > MAX_POSITIONS_PER_SYMBOL:
+                violations.append({
+                    "type":           "max_positions",
+                    "symbol":         symbol,
+                    "tickets":        [str(p["ticket"]) for p in same_dir],
+                    "position_count": len(same_dir),
+                    "direction":      direction,
+                })
+                stacking_breach = True
+                continue
+
+            # Secondary: rapid lot-splitting -- entries clustered within the
+            # 60s window of the batch's FIRST entry breach even under the cap.
+            if len(same_dir) >= 2 and \
+               same_dir[-1]["open_time"] - same_dir[0]["open_time"] <= POSITION_GROUP_WINDOW_SECS:
+                violations.append({
+                    "type":           "lot_splitting",
+                    "symbol":         symbol,
+                    "tickets":        [str(p["ticket"]) for p in same_dir],
+                    "position_count": len(same_dir),
+                    "direction":      direction,
+                })
+                stacking_breach = True
+
+        # Stacking already breaches -- skip averaging-down duplicates.
+        if stacking_breach:
             continue
 
         # Averaging down: a later same-direction entry at a worse price than an
@@ -617,7 +638,8 @@ def read_account(
     if weekend_window:
         weekend_violations = check_weekend_violations(open_positions)
 
-    # -- Position violations: max 2 positions/symbol + no averaging down --
+    # -- Position violations: max 2 raw positions/symbol/direction, no
+    #    lot-splitting, no averaging down --
     position_violations = check_position_violations(open_positions)
 
     return {

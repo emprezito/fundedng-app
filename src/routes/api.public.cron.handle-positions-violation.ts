@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendEventEmail } from "@/lib/email.server";
 
 interface PositionViolation {
-  type: "max_positions" | "averaging_down";
+  type: "max_positions" | "averaging_down" | "lot_splitting";
   symbol: string;
   tickets: string[];
   position_count: number;
@@ -93,10 +93,14 @@ async function handlePositionsViolation(request: Request) {
   }
 
   const v = newViolations[0];
-  const isAveraging = v.type === "averaging_down";
-  const breachReason = isAveraging
-    ? `Averaging down violation: a position was added to ${v.symbol} at a worse price than an existing ${v.direction || ""} position (tickets #${v.tickets.join(", #")}). Adding to a losing position is prohibited — instant breach.`
-    : `Position stacking violation: ${v.position_count} positions were open on ${v.symbol} at the same time (maximum 2 allowed; tickets #${v.tickets.join(", #")}). Positions opened within 60 seconds of each other count as a single position — instant breach.`;
+  let breachReason: string;
+  if (v.type === "averaging_down") {
+    breachReason = `Averaging down violation: a position was added to ${v.symbol} at a worse price than an existing ${v.direction || ""} position (tickets #${v.tickets.join(", #")}). Adding to a losing position is prohibited — instant breach.`;
+  } else if (v.type === "lot_splitting") {
+    breachReason = `Lot-splitting violation: ${v.position_count} ${v.direction || ""} positions were opened on ${v.symbol} within 60 seconds (tickets #${v.tickets.join(", #")}). Splitting an order into multiple entries is prohibited — instant breach.`;
+  } else {
+    breachReason = `Position stacking violation: ${v.position_count} ${v.direction || ""} positions were open on ${v.symbol} at the same time (maximum 2 per symbol per direction; tickets #${v.tickets.join(", #")}). Position count is not reset by the 60-second window — instant breach.`;
+  }
 
   const { error: updateErr } = await supabaseAdmin
     .from("trader_accounts")
@@ -111,12 +115,18 @@ async function handlePositionsViolation(request: Request) {
   }
 
   // Insert trader notification
+  let notificationMessage: string;
+  if (v.type === "averaging_down") {
+    notificationMessage = `You added to a ${v.symbol} position at a worse price than your existing position. Averaging down is prohibited — the account has been breached.`;
+  } else if (v.type === "lot_splitting") {
+    notificationMessage = `You opened ${v.position_count} ${v.symbol} positions in quick succession (within 60 seconds). Order splitting is prohibited — the account has been breached.`;
+  } else {
+    notificationMessage = `You had ${v.position_count} ${v.direction || ""} positions open on ${v.symbol} at the same time (max 2 per symbol per direction). The account has been breached.`;
+  }
   await supabaseAdmin.from("notifications").insert({
     user_id: account.user_id,
     title: "⚠️ Account Breached — Position Violation",
-    message: isAveraging
-      ? `You added to a ${v.symbol} position at a worse price than your existing position. Averaging down is prohibited — the account has been breached.`
-      : `You had ${v.position_count} positions open on ${v.symbol} at the same time (max 2 allowed). The account has been breached.`,
+    message: notificationMessage,
     type: "breach",
   });
 

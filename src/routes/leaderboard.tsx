@@ -41,27 +41,10 @@ function LeaderboardPage() {
   const [newActivityId, setNewActivityId] = useState<string | null>(null);
   const [totalPayouts, setTotalPayouts] = useState<number>(0);
 
-  const BASE_PAYOUT_NGN = 27_890_350;
-
   useEffect(() => {
     async function fetchTotalPayouts() {
-      const { data: payoutData } = await supabase
-        .from("payouts")
-        .select("amount_naira, currency")
-        .eq("status", "paid");
-      const { data: manualData } = await supabase
-        .from("live_activity")
-        .select("amount, metadata")
-        .eq("event_type", "payout_approved");
-      let total = BASE_PAYOUT_NGN;
-      for (const p of payoutData ?? []) {
-        total += p.currency === "USD" ? Number(p.amount_naira) / 1550 : Number(p.amount_naira);
-      }
-      for (const m of manualData ?? []) {
-        const metaAmt = (m.metadata as any)?.payout_amount;
-        total += Number(metaAmt ?? m.amount ?? 0);
-      }
-      setTotalPayouts(total);
+      const { data } = await supabase.rpc("get_total_payouts");
+      setTotalPayouts(Number(data ?? 0));
     }
 
     fetchTotalPayouts();
@@ -93,42 +76,8 @@ function LeaderboardPage() {
       })
       .subscribe();
 
-    const payoutChannel = supabase
-      .channel("payout-total-public")
-      .on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table: "payouts",
-      }, () => {
-        supabase
-          .from("payouts")
-          .select("amount_naira, currency")
-          .eq("status", "paid")
-          .then(({ data }) => {
-            if (!data) return;
-            let realTotal = 0;
-            for (const p of data) {
-              realTotal += p.currency === "USD" ? Number(p.amount_naira) / 1550 : Number(p.amount_naira);
-            }
-            supabase
-              .from("live_activity")
-              .select("amount, metadata")
-              .eq("event_type", "payout_approved")
-              .then(({ data: manualData }) => {
-                let manualTotal = 0;
-                for (const m of manualData ?? []) {
-                  const metaAmt = (m.metadata as any)?.payout_amount;
-                  manualTotal += Number(metaAmt ?? m.amount ?? 0);
-                }
-                setTotalPayouts(BASE_PAYOUT_NGN + realTotal + manualTotal);
-              });
-          });
-      })
-      .subscribe();
-
     return () => {
       supabase.removeChannel(actChannel);
-      supabase.removeChannel(payoutChannel);
     };
   }, []);
 

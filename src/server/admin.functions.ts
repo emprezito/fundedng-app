@@ -58,6 +58,26 @@ async function assertUser(token: string) {
   return { ok: true as const, userId: authData.user.id };
 }
 
+// Add a manual payout to the persistent total-payouts counter (app_config).
+// Real payouts are handled by a DB trigger; this covers social-proof payouts
+// that are logged manually and never exist in the payouts table.
+async function incrementTotalPayouts(amount: number) {
+  const next = Math.round(amount * 100) / 100;
+  if (!(next > 0)) return;
+  const { data: row } = await supabaseAdmin
+    .from("app_config")
+    .select("value")
+    .eq("key", "total_payouts")
+    .maybeSingle();
+  const current = Number(row?.value ?? 0);
+  await supabaseAdmin
+    .from("app_config")
+    .upsert(
+      { key: "total_payouts", value: String(current + next), updated_at: new Date().toISOString() } as never,
+      { onConflict: "key" },
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Request payout (trader-side) + send email notification
 // ---------------------------------------------------------------------------
@@ -936,6 +956,10 @@ export const addManualActivityServer = createServerFn({ method: "POST" })
       } as never);
 
       if (actErr) return { ok: false as const, error: actErr.message };
+
+      if (data.eventType === "payout_approved") {
+        await incrementTotalPayouts(data.payoutAmount ?? 0);
+      }
 
       const eventLabels: Record<string, { emoji: string; title: string; color: number }> = {
         phase1_to_phase2: { emoji: "🎯", title: "Phase 2 Approved", color: 0x3498db },
