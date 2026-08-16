@@ -5,6 +5,7 @@ import { sendEventEmail } from "@/lib/email.server";
 import { claimPoolAccount } from "@/lib/account-pool.server";
 import { sendTelegramWithButtons } from "@/lib/telegram.server";
 import { sendDiscordNotification } from "@/lib/discord.server";
+import { sendPushToUser } from "@/lib/push.server";
 
 const AddSocialProofInput = z.object({
   accessToken: z.string().min(1),
@@ -246,118 +247,152 @@ export const updatePayoutServer = createServerFn({ method: "POST" })
           }
         }
       } else if (data.status === "paid") {
+        // Fetch payout with full account + challenge details
         const { data: payout } = await supabaseAdmin
           .from("payouts")
-          .select("trader_account_id")
+          .select(`
+            id, amount_naira, trader_account_id, user_id,
+            trader_accounts(
+              id, user_id, mt5_login, mt5_server, currency,
+              starting_balance, current_phase, challenge_id, order_id,
+              challenges(name),
+              profiles(full_name)
+            )
+          `)
           .eq("id", data.payoutId)
           .maybeSingle();
-        if (payout?.trader_account_id) {
-          const { data: account } = await supabaseAdmin
+
+        const account = (payout as any)?.trader_accounts;
+        if (account) {
+          const traderUserId = account.user_id ?? (payout as any)?.user_id;
+          const traderName = account?.profiles?.full_name ?? "Trader";
+          const currency = account?.currency ?? "NGN";
+          const startingBalance = Number(account?.starting_balance ?? 0);
+          const challengeId = account?.challenge_id;
+          const oldPhase = Number(account?.current_phase ?? 1);
+          const oldLogin = account?.mt5_login ?? "?";
+          const balanceDisplay = currency === "USD"
+            ? `$${startingBalance.toLocaleString()}`
+            : `₦${startingBalance.toLocaleString()}`;
+          const payoutAmount = Number((payout as any)?.amount_naira ?? 0);
+          const payoutDisplay = currency === "USD"
+            ? `$${(payoutAmount / 1550).toFixed(2)}`
+            : `₦${payoutAmount.toLocaleString()}`;
+
+          // 1. Deactivate old account
+          await supabaseAdmin
             .from("trader_accounts")
-            .select("id, starting_balance")
-            .eq("id", payout.trader_account_id)
-            .maybeSingle();
-          if (account) {
+            .update({ status: "closed" } as never)
+            .eq("id", account.id);
+
+          // 2. Provision new account from pool
+          const newOrderId = crypto.randomUUID();
+          const poolResult = await claimPoolAccount({
+            orderId: newOrderId,
+            accountSizeNgn: currency === "USD" ? 0 : startingBalance,
+            accountSizeUsd: currency === "USD" ? startingBalance : undefined,
+            currency,
+            challengeId: challengeId ?? "",
+            userId: traderUserId,
+            phaseProgression: true,
+          });
+
+          if (poolResult.ok) {
+            // 3. Set correct phase on new account
             await supabaseAdmin
               .from("trader_accounts")
-              .update({ current_equity: account.starting_balance, peak_equity: account.starting_balance, daily_peak_equity: account.starting_balance, daily_peak_date: new Date().toISOString().slice(0, 10), trading_days: 0 } as never)
-              .eq("id", account.id);
+              .update({ current_phase: oldPhase } as never)
+              .eq("id", poolResult.accountId);
+
+            // 4. In-app notification with credentials
             await supabaseAdmin
-              .from("account_snapshots")
-              .insert({ trader_account_id: account.id, equity: account.starting_balance, balance: account.starting_balance, profit: 0, drawdown_percent: 0, snapshot_time: new Date().toISOString() } as never);
+              .from("notifications")
+              .insert({
+                user_id: traderUserId,
+                title: "🎉 Payout Processed — New Account Ready",
+                message: `Your payout of ${payoutDisplay} has been processed. A new account has been provisioned. New Login: ${poolResult.mt5Login} · Server: ${poolResult.mt5Server}. Your starting balance is ${balanceDisplay}. Check your dashboard for the password.`,
+                type: "success",
+              } as never);
 
-            // Pause monitor for this account to prevent MT5 balance from overwriting reset
-            await supabaseAdmin
-              .from("trader_accounts")
-              .update({
-                monitor_paused: true,
-                monitor_paused_at: new Date().toISOString(),
-                monitor_paused_reason: `Payout paid — awaiting MT5 balance reset on Exness`,
-              } as never)
-              .eq("id", account.id);
+            // 5. Web push
+            await sendPushToUser(traderUserId, {
+              title: "🎉 Payout Processed — New Account Ready",
+              body: `Your new MT5 account is active. Tap to view credentials.`,
+              url: "/dashboard",
+            }).catch(() => {});
 
-            // Send urgent Telegram reminder
-            const { data: fullAccount } = await supabaseAdmin
-              .from("trader_accounts")
-              .select("mt5_login, mt5_server, currency, starting_balance, profiles(full_name)")
-              .eq("id", account.id)
-              .maybeSingle();
-
-            const { data: payoutDetails } = await supabaseAdmin
-              .from("payouts")
-              .select("amount_naira")
-              .eq("id", data.payoutId)
-              .maybeSingle();
-
-            // Post to live activity feed
+            // 6. Post to live activity feed
             {
-              const fullName = (fullAccount as any)?.profiles?.full_name ?? "Trader";
-              const avatarInitials = fullName.split(" ").slice(0, 2)
+              const avatarInitials = traderName.split(" ").slice(0, 2)
                 .map((w: string) => w[0]?.toUpperCase() ?? "").join("");
-
-              const cur = (fullAccount as any)?.currency ?? "NGN";
-              const amountNaira = Number(payoutDetails?.amount_naira ?? 0);
-              const displayAmount = cur === "USD" ? amountNaira / 1550 : amountNaira;
-
               await supabaseAdmin.from("live_activity").insert({
                 event_type: "payout_paid",
-                anonymized_name: fullName,
+                anonymized_name: traderName,
                 avatar_initials: avatarInitials,
                 challenge_name: "",
-                currency: cur,
-                amount: Math.round(displayAmount * 100) / 100,
-                account_size: Number((fullAccount as any)?.starting_balance ?? 0),
+                currency,
+                amount: Math.round((currency === "USD" ? payoutAmount / 1550 : payoutAmount) * 100) / 100,
+                account_size: startingBalance,
               } as never);
             }
 
-            const traderName = (fullAccount as any)?.profiles?.full_name ?? "Unknown Trader";
-            const mt5Login = (fullAccount as any)?.mt5_login ?? "?";
-            const mt5Server = (fullAccount as any)?.mt5_server ?? "Exness-MT5Trial9";
-            const currency = (fullAccount as any)?.currency ?? "NGN";
-            const startingBalance = Number((fullAccount as any)?.starting_balance ?? 0);
-            const payoutAmount = Number(payoutDetails?.amount_naira ?? 0);
-
-            const balanceDisplay = currency === "USD"
-              ? `$${startingBalance.toLocaleString()}`
-              : `₦${startingBalance.toLocaleString()}`;
-
-            const payoutDisplay = currency === "USD"
-              ? `$${(payoutAmount / 1550).toFixed(2)}`
-              : `₦${payoutAmount.toLocaleString()}`;
-
+            // 7. Admin Telegram
             try {
               await supabaseAdmin.rpc("send_telegram" as never, {
                 p_message:
-                  `🔴 <b>ACTION REQUIRED — MT5 Reset Needed</b>\n\n` +
+                  `✅ <b>Payout Paid — New Account Provisioned</b>\n\n` +
                   `Trader: <b>${traderName}</b>\n` +
-                  `MT5 Login: <code>${mt5Login}</code>\n` +
-                  `Server: ${mt5Server}\n` +
-                  `Account Size: ${balanceDisplay}\n` +
-                  `Payout Paid: ${payoutDisplay}\n\n` +
-                  `⚠️ <b>Go to Exness Partner Portal NOW and reset this account balance to ${balanceDisplay}</b>\n\n` +
-                  `🛑 Monitor is PAUSED for this account until you confirm the reset.\n` +
-                  `✅ Click "MT5 Reset Done" in the admin panel to resume monitoring.`,
+                  `Payout: ${payoutDisplay}\n` +
+                  `Old Login: <code>${oldLogin}</code> → <b>CLOSED</b>\n\n` +
+                  `🔄 New account provisioned from pool:\n` +
+                  `Login: <code>${poolResult.mt5Login}</code>\n` +
+                  `Server: ${poolResult.mt5Server}\n` +
+                  `Phase: ${oldPhase} · Size: ${balanceDisplay}`,
               } as never);
             } catch (e) {
-              console.error("[updatePayoutServer] telegram reminder failed", e);
+              console.error("[updatePayoutServer] telegram notification failed", e);
             }
 
+            // 8. Discord
             await sendDiscordNotification(
-              `✅ **Payout Completed**`,
+              `✅ **Payout Completed — New Account Provisioned**`,
               [{
                 title: `✅ Payout Completed — ${traderName}`,
                 color: 0x1ec97e,
                 fields: [
                   { name: "Trader", value: traderName, inline: true },
                   { name: "Amount", value: payoutDisplay, inline: true },
-                  { name: "Account", value: balanceDisplay, inline: true },
-                  { name: "MT5", value: `\`${mt5Login}\``, inline: true },
+                  { name: "Old Account", value: `\`${oldLogin}\` → CLOSED`, inline: true },
+                  { name: "New Login", value: `\`${poolResult.mt5Login}\``, inline: true },
+                  { name: "Server", value: poolResult.mt5Server, inline: true },
+                  { name: "Phase", value: `${oldPhase}`, inline: true },
                 ],
                 timestamp: new Date().toISOString(),
               }],
             ).catch((e) => console.error("[updatePayoutServer] discord payout_paid failed", e));
+          } else {
+            // Pool empty — notify admin, keep old account active as fallback
+            await supabaseAdmin
+              .from("trader_accounts")
+              .update({ status: "active" } as never)
+              .eq("id", account.id);
+
+            try {
+              await supabaseAdmin.rpc("send_telegram" as never, {
+                p_message:
+                  `🔴 <b>Payout Paid — Pool Empty</b>\n\n` +
+                  `Trader: <b>${traderName}</b>\n` +
+                  `Payout: ${payoutDisplay}\n\n` +
+                  `⚠️ No pool accounts available for provisioning.\n` +
+                  `Old account (<code>${oldLogin}</code>) kept active.\n` +
+                  `Please manually provision an account.`,
+              } as never);
+            } catch (e) {
+              console.error("[updatePayoutServer] telegram pool-empty failed", e);
+            }
           }
         }
+
         await sendEventEmail({ type: "payout_paid", payoutId: data.payoutId }).catch((e) =>
           console.error("[updatePayoutServer] payout_paid email failed", e),
         );
@@ -371,6 +406,121 @@ export const updatePayoutServer = createServerFn({ method: "POST" })
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Update failed";
       console.error("[updatePayoutServer] unexpected", msg);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Provision Payout Account — close old account + provision new from pool
+// ---------------------------------------------------------------------------
+const ProvisionPayoutInput = z.object({
+  accessToken: z.string().min(1),
+  payoutId: z.string().uuid(),
+});
+
+export const provisionPayoutServer = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => ProvisionPayoutInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const auth = await assertAdmin(data.accessToken);
+      if (!auth.ok) return auth;
+
+      const { data: payout } = await supabaseAdmin
+        .from("payouts")
+        .select(`
+          id, amount_naira, trader_account_id, user_id,
+          trader_accounts(
+            id, user_id, mt5_login, mt5_server, currency,
+            starting_balance, current_phase, challenge_id, order_id,
+            challenges(name),
+            profiles(full_name)
+          )
+        `)
+        .eq("id", data.payoutId)
+        .maybeSingle();
+
+      const account = (payout as any)?.trader_accounts;
+      if (!account) return { ok: false as const, error: "Account not found" };
+
+      const traderUserId = account.user_id ?? (payout as any)?.user_id;
+      const traderName = account?.profiles?.full_name ?? "Trader";
+      const currency = account?.currency ?? "NGN";
+      const startingBalance = Number(account?.starting_balance ?? 0);
+      const challengeId = account?.challenge_id;
+      const oldPhase = Number(account?.current_phase ?? 1);
+      const oldLogin = account?.mt5_login ?? "?";
+      const balanceDisplay = currency === "USD"
+        ? `$${startingBalance.toLocaleString()}`
+        : `₦${startingBalance.toLocaleString()}`;
+      const payoutAmount = Number((payout as any)?.amount_naira ?? 0);
+      const payoutDisplay = currency === "USD"
+        ? `$${(payoutAmount / 1550).toFixed(2)}`
+        : `₦${payoutAmount.toLocaleString()}`;
+
+      // 1. Deactivate old account
+      await supabaseAdmin
+        .from("trader_accounts")
+        .update({ status: "closed" } as never)
+        .eq("id", account.id);
+
+      // 2. Provision new account from pool
+      const newOrderId = crypto.randomUUID();
+      const poolResult = await claimPoolAccount({
+        orderId: newOrderId,
+        accountSizeNgn: currency === "USD" ? 0 : startingBalance,
+        accountSizeUsd: currency === "USD" ? startingBalance : undefined,
+        currency,
+        challengeId: challengeId ?? "",
+        userId: traderUserId,
+        phaseProgression: true,
+      });
+
+      if (poolResult.ok) {
+        // 3. Set correct phase on new account
+        await supabaseAdmin
+          .from("trader_accounts")
+          .update({ current_phase: oldPhase } as never)
+          .eq("id", poolResult.accountId);
+
+        // 4. In-app notification
+        await supabaseAdmin
+          .from("notifications")
+          .insert({
+            user_id: traderUserId,
+            title: "🎉 Payout Processed — New Account Ready",
+            message: `Your payout of ${payoutDisplay} has been processed. A new account has been provisioned. New Login: ${poolResult.mt5Login} · Server: ${poolResult.mt5Server}. Your starting balance is ${balanceDisplay}. Check your dashboard for the password.`,
+            type: "success",
+          } as never);
+
+        // 5. Web push
+        await sendPushToUser(traderUserId, {
+          title: "🎉 Payout Processed — New Account Ready",
+          body: `Your new MT5 account is active. Tap to view credentials.`,
+          url: "/dashboard",
+        }).catch(() => {});
+
+        return {
+          ok: true as const,
+          newLogin: poolResult.mt5Login,
+          newServer: poolResult.mt5Server,
+          traderName,
+          payoutDisplay,
+          balanceDisplay,
+          oldLogin,
+          oldPhase,
+        };
+      } else {
+        // Pool empty — rollback old account
+        await supabaseAdmin
+          .from("trader_accounts")
+          .update({ status: "active" } as never)
+          .eq("id", account.id);
+
+        return { ok: false as const, error: "Pool empty — no accounts available" };
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Provision failed";
+      console.error("[provisionPayoutServer] unexpected", msg);
       return { ok: false as const, error: msg };
     }
   });

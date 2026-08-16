@@ -315,6 +315,7 @@ async function syncEquityV2(request: Request) {
     .select("id, status, starting_balance, peak_equity, last_synced_at, trading_days, challenges(drawdown_type)")
     .eq("id", account_id)
     .in("status", ["active", "funded"])
+    .eq("monitor_paused", false)
     .single();
 
   if (acctErr || !account) {

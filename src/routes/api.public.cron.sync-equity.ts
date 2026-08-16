@@ -27,7 +27,8 @@ async function syncEquity() {
     .from("trader_accounts")
     .select("id, mt5_login, provider, starting_balance, peak_equity, status, last_synced_at, trading_days, challenges(drawdown_type)")
     .in("status", ["active", "funded"])
-    .eq("provider", "exness-bot");
+    .eq("provider", "exness-bot")
+    .eq("monitor_paused", false);
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 });
@@ -51,11 +52,18 @@ async function syncEquity() {
       const drawdownType = (acct as any).challenges?.drawdown_type ?? "trailing_equity";
       const isTrailingBalance = drawdownType === "trailing_balance";
       const metric = isTrailingBalance ? Number(info.balance) : Number(info.equity);
-      const peak = Math.max(
-        acct.starting_balance,
-        Number(acct.peak_equity ?? acct.starting_balance),
-        metric
-      );
+
+      const prevPeak = Number(acct.peak_equity ?? acct.starting_balance);
+      const justReset = Math.abs(prevPeak - acct.starting_balance) < 1;
+      const balanceIsReset = Math.abs(info.balance - acct.starting_balance) < acct.starting_balance * 0.02;
+
+      let peak: number;
+      if (justReset && !balanceIsReset) {
+        peak = acct.starting_balance;
+      } else {
+        peak = Math.max(acct.starting_balance, prevPeak, metric);
+      }
+
       const drawdown =
         metric < peak
           ? ((peak - metric) / peak) * 100
@@ -84,6 +92,7 @@ async function syncEquity() {
         .from("trader_accounts")
         .update({
           last_synced_at: new Date().toISOString(),
+          peak_equity: peak,
           trading_days: isNewDay
             ? (acct.trading_days ?? 0) + 1
             : acct.trading_days ?? 0,

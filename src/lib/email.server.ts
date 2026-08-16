@@ -451,21 +451,53 @@ async function payoutPaid(payoutId: string) {
   const bank = (po as any).bank_details ?? {};
   const method = `${bank.bank_name ?? "Bank"} · ${bank.account_number ?? ""}`;
   const subject = "💵 Payout Paid — Payment Sent Successfully!";
-  const details =
+
+  // Fetch the trader's active account (provisioned after payout)
+  const { data: newAccount } = await supabaseAdmin
+    .from("trader_accounts")
+    .select("mt5_login, mt5_server, currency, starting_balance, challenges(name)")
+    .eq("user_id", (po as any).user_id)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const paymentDetails =
     `<div style="background:#f9fafb;border-radius:10px;padding:16px 18px;margin:18px 0;">` +
     `<div style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:12px;color:#0a8f5a;letter-spacing:1px;margin-bottom:10px;">PAYMENT DETAILS</div>` +
     detailRow("Amount Paid", fmtNaira((po as any).amount_naira)) +
     detailRow("Payment Method", method) +
     detailRow("Date Paid", new Date((po as any).processed_at ?? (po as any).updated_at ?? new Date()).toLocaleDateString("en-NG")) +
     `</div>`;
+
+  let accountSection = "";
+  if (newAccount) {
+    const cur = (newAccount as any).currency ?? "NGN";
+    const chName = (newAccount as any).challenges?.name ?? "Challenge";
+    const size = cur === "USD"
+      ? `$${Number((newAccount as any).starting_balance ?? 0).toLocaleString()}`
+      : `₦${Number((newAccount as any).starting_balance ?? 0).toLocaleString()}`;
+    accountSection =
+      `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px 18px;margin:18px 0;">` +
+      `<div style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:12px;color:#0a8f5a;letter-spacing:1px;margin-bottom:10px;">🔄 NEW ACCOUNT PROVISIONED</div>` +
+      `<p style="font-size:14px;color:#374151;margin:0 0 10px;">A new trading account has been set up for you. Your previous account has been deactivated.</p>` +
+      detailRow("Challenge", chName) +
+      detailRow("Starting Balance", size) +
+      detailRow("MT5 Login", String((newAccount as any).mt5_login ?? "—")) +
+      detailRow("Server", String((newAccount as any).mt5_server ?? "—")) +
+      `<p style="font-size:13px;color:#6b7280;margin:10px 0 0;">Log in to your dashboard to view the password and start trading.</p>` +
+      `</div>`;
+  }
+
   const html = shell({
     title: subject,
-    preview: "Your payout has been sent.",
+    preview: "Your payout has been sent and a new account has been provisioned.",
     body:
       h1(`Hi ${escapeHtml(fn)},`) +
       p(`Your payout has been sent successfully! 🎉`) +
       p(`The amount has been transferred to your bank account. It should reflect in your account shortly depending on your bank's processing time.`) +
-      details +
+      paymentDetails +
+      accountSection +
       p(`Congratulations on your successful payout! Keep up the great trading and we look forward to processing more payouts for you. 🇳🇬`) +
       p(`If you have any questions contact us at <a href="mailto:support@fundedng.fun" style="color:#0a8f5a;">support@fundedng.fun</a>`) +
       btn(`${SITE}/dashboard`, "VIEW DASHBOARD →"),
@@ -473,7 +505,7 @@ async function payoutPaid(payoutId: string) {
   const r = await resendSend({ to: email, subject, html });
   await sendAdminCopy(`Payout paid: ${fmtNaira((po as any).amount_naira)} · ${name ?? email}`, shell({
     title: "Payout paid",
-    body: h1("Payout paid") + detailRow("Trader", name ?? "—") + detailRow("Email", email) + details,
+    body: h1("Payout paid") + detailRow("Trader", name ?? "—") + detailRow("Email", email) + paymentDetails,
   }));
   return r;
 }

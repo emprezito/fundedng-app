@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { formatNaira } from "@/lib/utils";
 import { verifyKycServer, verifyKycDocumentServer, rejectKycDocumentServer } from "@/server/kyc.functions";
-import { addSocialProofServer, updateSocialProofServer, deleteSocialProofServer, approvePhase2Server, approveFundedServer } from "@/server/admin.functions";
+import { addSocialProofServer, updateSocialProofServer, deleteSocialProofServer, approvePhase2Server, approveFundedServer, provisionPayoutServer } from "@/server/admin.functions";
 import { notifyEmail } from "@/lib/notify-email";
 
 
@@ -320,17 +320,11 @@ function useAdminDataHook() {
     if (status === "approved") notifyEmail({ type: "payout_approved", payoutId: p.id });
     if (status === "paid") {
       notifyEmail({ type: "payout_paid", payoutId: p.id });
-      const { data: account } = await supabase.from("trader_accounts").select("id, starting_balance").eq("id", p.trader_account_id).maybeSingle();
-      if (account) {
-        await supabase.from("trader_accounts").update({ current_equity: account.starting_balance, peak_equity: account.starting_balance, daily_peak_equity: account.starting_balance, daily_peak_date: new Date().toISOString().slice(0, 10), trading_days: 0 } as never).eq("id", account.id);
-        await supabase.from("account_snapshots").insert({ trader_account_id: account.id, equity: account.starting_balance, balance: account.starting_balance, profit: 0, drawdown_percent: 0, snapshot_time: new Date().toISOString() } as never);
-        // Pause monitor to prevent MT5 balance from overwriting the reset
-        await supabase.from("trader_accounts").update({
-          monitor_paused: true,
-          monitor_paused_at: new Date().toISOString(),
-          monitor_paused_reason: "Payout paid — awaiting MT5 balance reset on Exness",
-        } as never).eq("id", account.id);
-        toast.success("Account metrics reset — monitor paused");
+      const res = await provisionPayoutServer({ data: { accessToken: sess.session.access_token, payoutId: p.id } });
+      if (res?.ok) {
+        toast.success("Payout paid — new account provisioned");
+      } else {
+        toast.error(res?.error ?? "Provision failed — check pool availability");
       }
     }
     if (status === "rejected") notifyEmail({ type: "payout_rejected", payoutId: p.id, reason: "Rejected by admin." });

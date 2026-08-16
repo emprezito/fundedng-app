@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { answerCallbackQuery, editTelegramMessage, editTelegramMessageWithButtons } from "@/lib/telegram.server";
 import { sendEventEmail } from "@/lib/email.server";
 import { claimPoolAccount } from "@/lib/account-pool.server";
+import { sendPushToUser } from "@/lib/push.server";
 
 const ADMIN_TELEGRAM_ID = 8749650113;
 
@@ -87,10 +88,11 @@ export const Route = createFileRoute("/api/telegram-webhook")({
               const { data: payout } = await supabaseAdmin
                 .from("payouts")
                 .select(`
-                  id, status, amount_naira, profit_percent, trader_account_id,
+                  id, status, amount_naira, profit_percent, trader_account_id, user_id,
                   trader_accounts(
                     id, user_id, mt5_login, mt5_server, currency,
-                    starting_balance, current_equity, peak_equity,
+                    starting_balance, current_phase, challenge_id, order_id,
+                    challenges(name),
                     profiles(full_name)
                   )
                 `)
@@ -109,12 +111,17 @@ export const Route = createFileRoute("/api/telegram-webhook")({
               const account = (payout as any).trader_accounts;
               const currency = account?.currency ?? "NGN";
               const startingBalance = Number(account?.starting_balance ?? 0);
-              const mt5Login = account?.mt5_login ?? "?";
-              const mt5Server = account?.mt5_server ?? "Exness-MT5Trial9";
+              const oldLogin = account?.mt5_login ?? "?";
               const traderName = account?.profiles?.full_name ?? "Trader";
+              const challengeId = account?.challenge_id;
+              const oldPhase = Number(account?.current_phase ?? 1);
               const balanceDisplay = currency === "USD"
                 ? `$${startingBalance.toLocaleString()}`
                 : `₦${startingBalance.toLocaleString()}`;
+              const payoutAmount = Number((payout as any).amount_naira ?? 0);
+              const payoutDisplay = currency === "USD"
+                ? `$${(payoutAmount / 1550).toFixed(2)}`
+                : `₦${payoutAmount.toLocaleString()}`;
 
               const { error } = await supabaseAdmin
                 .from("payouts")
@@ -127,47 +134,84 @@ export const Route = createFileRoute("/api/telegram-webhook")({
                 break;
               }
 
+              // 1. Deactivate old account
               await supabaseAdmin
                 .from("trader_accounts")
-                .update({
-                  current_equity: startingBalance,
-                  peak_equity: startingBalance,
-                  daily_peak_equity: startingBalance,
-                  trading_days: 0,
-                  monitor_paused: true,
-                  monitor_paused_at: new Date().toISOString(),
-                  monitor_paused_reason: `Payout paid — awaiting MT5 balance reset`,
-                } as never)
+                .update({ status: "closed" } as never)
                 .eq("id", account?.id);
 
-              await supabaseAdmin.from("account_snapshots").insert({
-                trader_account_id: account?.id,
-                equity: startingBalance,
-                balance: startingBalance,
-                profit: 0,
-                drawdown_percent: 0,
-                snapshot_time: new Date().toISOString(),
-              } as never);
+              // 2. Provision new account from pool
+              const traderUserId = account?.user_id ?? (payout as any)?.user_id;
+              const newOrderId = crypto.randomUUID();
+              const poolResult = await claimPoolAccount({
+                orderId: newOrderId,
+                accountSizeNgn: currency === "USD" ? 0 : startingBalance,
+                accountSizeUsd: currency === "USD" ? startingBalance : undefined,
+                currency,
+                challengeId: challengeId ?? "",
+                userId: traderUserId,
+                phaseProgression: true,
+              });
+
+              let newLogin = "?";
+              let newServer = "Exness-MT5Trial9";
+
+              if (poolResult.ok) {
+                newLogin = poolResult.mt5Login;
+                newServer = poolResult.mt5Server;
+
+                // 3. Set correct phase
+                await supabaseAdmin
+                  .from("trader_accounts")
+                  .update({ current_phase: oldPhase } as never)
+                  .eq("id", poolResult.accountId);
+
+                // 4. In-app notification
+                await supabaseAdmin
+                  .from("notifications")
+                  .insert({
+                    user_id: traderUserId,
+                    title: "🎉 Payout Processed — New Account Ready",
+                    message: `Your payout of ${payoutDisplay} has been processed. A new account has been provisioned. New Login: ${poolResult.mt5Login} · Server: ${poolResult.mt5Server}. Your starting balance is ${balanceDisplay}. Check your dashboard for the password.`,
+                    type: "success",
+                  } as never);
+
+                // 5. Web push
+                await sendPushToUser(traderUserId, {
+                  title: "🎉 Payout Processed — New Account Ready",
+                  body: `Your new MT5 account is active. Tap to view credentials.`,
+                  url: "/dashboard",
+                }).catch(() => {});
+              } else {
+                // Pool empty — rollback
+                await supabaseAdmin
+                  .from("trader_accounts")
+                  .update({ status: "active" } as never)
+                  .eq("id", account?.id);
+              }
 
               await sendEventEmail({ type: "payout_paid", payoutId: id }).catch(() => {});
 
               await answerCallbackQuery(callbackQueryId, "💳 Marked as paid!", false);
 
               if (chatId && messageId) {
+                const statusLine = poolResult.ok
+                  ? `✅ <b>APPROVED</b> → 💳 <b>PAID</b>\n\n` +
+                    `🔄 <b>New account provisioned</b>\n` +
+                    `Old Login: <code>${oldLogin}</code> → CLOSED\n` +
+                    `New Login: <code>${newLogin}</code>\n` +
+                    `Server: ${newServer}\n` +
+                    `Phase: ${oldPhase} · Size: ${balanceDisplay}`
+                  : `✅ <b>APPROVED</b> → 💳 <b>PAID</b>\n\n` +
+                    `🔴 <b>Pool empty</b> — old account kept active.\n` +
+                    `Login: <code>${oldLogin}</code>\n` +
+                    `Please manually provision an account.`;
+
                 await editTelegramMessageWithButtons(
                   chatId,
                   messageId,
-                  cq.message.text.split("\n\n✅")[0] +
-                    "\n\n✅ <b>APPROVED</b> → 💳 <b>PAID</b> by Emperor\n\n" +
-                    `🔴 <b>ACTION REQUIRED</b>\n` +
-                    `Go to Exness Partner Portal and reset MT5 login <code>${mt5Login}</code> balance to <b>${balanceDisplay}</b>\n` +
-                    `Server: ${mt5Server}\n\n` +
-                    `Tap the button below ONLY after completing the reset.`,
-                  [
-                    [
-                      { text: "🔄 MT5 Reset Done", callback_data: `mt5_reset:${account?.id}` },
-                    ]
-                  ]
+                  cq.message.text.split("\n\n✅")[0] + "\n\n" + statusLine,
+                  []
                 );
               }
               break;
