@@ -312,7 +312,7 @@ async function syncEquityV2(request: Request) {
 
   const { data: account, error: acctErr } = await supabaseAdmin
     .from("trader_accounts")
-    .select("id, status, starting_balance, peak_equity, last_synced_at, trading_days")
+    .select("id, status, starting_balance, peak_equity, last_synced_at, trading_days, challenges(drawdown_type)")
     .eq("id", account_id)
     .in("status", ["active", "funded"])
     .single();
@@ -327,6 +327,12 @@ async function syncEquityV2(request: Request) {
   const startingBalance = Number(account.starting_balance);
   const prevPeak = Number(account.peak_equity ?? startingBalance);
 
+  // Drawdown is measured against balance (realized) for trailing_balance
+  // accounts and against equity (floating) for everything else.
+  const drawdownType = (account as any).challenges?.drawdown_type ?? "trailing_equity";
+  const isTrailingBalance = drawdownType === "trailing_balance";
+  const metric = isTrailingBalance ? Number(balance) : Number(equity);
+
   // If peak_equity in DB equals starting_balance exactly, this account was just
   // phase-reset. Don't let incoming equity (which may still reflect old phase
   // profits) inflate the peak. Only allow equity to raise peak once balance
@@ -338,12 +344,12 @@ async function syncEquityV2(request: Request) {
   if (justReset && !balanceIsReset) {
     newPeak = startingBalance;
   } else {
-    newPeak = Math.max(startingBalance, prevPeak, equity);
+    newPeak = Math.max(startingBalance, prevPeak, metric);
   }
 
   const drawdownPercent =
-    equity < newPeak
-      ? Number((((newPeak - equity) / newPeak) * 100).toFixed(2))
+    metric < newPeak
+      ? Number((((newPeak - metric) / newPeak) * 100).toFixed(2))
       : 0;
 
   const { error: snapErr } = await supabaseAdmin

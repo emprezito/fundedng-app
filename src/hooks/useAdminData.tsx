@@ -13,7 +13,7 @@ const blankChallenge = {
   profit_target_percent: 10, phase2_profit_target_percent: "", max_drawdown_percent: 20,
   phases: 2, is_active: true, challenge_type: "standard", max_daily_drawdown_percent: 10, max_trading_days: 45, discount_percent: 0,
   min_trading_days: 3,
-  drawdown_type: "trailing_equity",
+  drawdown_type: "trailing_balance",
 };
 
 function useAdminDataHook() {
@@ -138,7 +138,7 @@ function useAdminDataHook() {
       max_trading_days: challengeForm.challenge_type === "instant" ? Number(challengeForm.max_trading_days) || null : null,
       min_trading_days: Number(challengeForm.min_trading_days) || 3,
       discount_percent: Number(challengeForm.discount_percent) || 0,
-      drawdown_type: challengeForm.drawdown_type || "trailing_equity",
+      drawdown_type: challengeForm.drawdown_type || "trailing_balance",
     };
     let error;
     if (editingChallenge?.id) ({ error } = await supabase.from("challenges").update(payload).eq("id", editingChallenge.id));
@@ -190,7 +190,7 @@ function useAdminDataHook() {
     const accountIds = poRows.map((p) => p.trader_account_id).filter(Boolean);
     const [profRes, chRes, ordRes, taRes] = await Promise.all([
       userIds.length ? supabase.from("profiles").select("id, full_name, bank_account_number, bank_name, bank_account_name, kyc_verified").in("id", userIds) : Promise.resolve({ data: [] as any[] }),
-      challengeIds.length ? supabase.from("challenges").select("id, name, account_size, profit_target_percent, phase2_profit_target_percent, max_drawdown_percent, phases").in("id", challengeIds) : Promise.resolve({ data: [] as any[] }),
+      challengeIds.length ? supabase.from("challenges").select("id, name, account_size, profit_target_percent, phase2_profit_target_percent, max_drawdown_percent, phases, drawdown_type").in("id", challengeIds) : Promise.resolve({ data: [] as any[] }),
       orderIds.length ? supabase.from("orders").select("id, status").in("id", orderIds) : Promise.resolve({ data: [] as any[] }),
       accountIds.length ? supabase.from("trader_accounts").select("id, mt5_login, currency, starting_balance, monitor_paused, monitor_paused_reason").in("id", accountIds) : Promise.resolve({ data: [] as any[] }),
     ]);

@@ -142,7 +142,7 @@ function Index() {
           <h2 className="font-display mt-4 text-4xl font-bold">Just 3 Rules. That's It.</h2>
           <div className="mt-12 grid gap-5 md:grid-cols-3">
             {[
-              { num: "01", title: "Max 20% Drawdown (Trailing)", desc: "Your equity must never drop more than 20% from the highest peak reached. No daily loss limit.", icon: ShieldCheck },
+              { num: "01", title: "Max 20% Drawdown (Balance Trailing)", desc: "Your account balance must never drop more than 20% from the highest balance reached — floating losses don't count. Plus a 10% daily loss limit from the day's highest balance.", icon: ShieldCheck },
               { num: "02", title: "No Tick Scalping", desc: "Each trade must be held at least 3 minutes — breached on the 4th detection. Two short trades at the same time is an instant breach.", icon: Clock },
               { num: "03", title: "Trade at Least Once a Week", desc: "At least 1 trade every calendar week to stay active. Profits across 3+ trading days per phase.", icon: Zap },
             ].map((r) => (
@@ -201,10 +201,10 @@ function Index() {
 }
 
 const fallbackStandard: Challenge[] = [
-  { id:"1", name:"Starter", account_size:200000, price_naira:7500, profit_target_percent:10, max_drawdown_percent:20, phases:2 },
-  { id:"2", name:"Growth", account_size:500000, price_naira:17500, profit_target_percent:10, max_drawdown_percent:20, phases:2 },
-  { id:"3", name:"Pro", account_size:1000000, price_naira:32000, profit_target_percent:10, max_drawdown_percent:20, phases:2 },
-  { id:"4", name:"Elite", account_size:2000000, price_naira:60000, profit_target_percent:10, max_drawdown_percent:20, phases:2 },
+  { id:"1", name:"Starter", account_size:200000, price_naira:7500, profit_target_percent:10, max_drawdown_percent:20, max_daily_drawdown_percent:10, phases:2 },
+  { id:"2", name:"Growth", account_size:500000, price_naira:17500, profit_target_percent:10, max_drawdown_percent:20, max_daily_drawdown_percent:10, phases:2 },
+  { id:"3", name:"Pro", account_size:1000000, price_naira:32000, profit_target_percent:10, max_drawdown_percent:20, max_daily_drawdown_percent:10, phases:2 },
+  { id:"4", name:"Elite", account_size:2000000, price_naira:60000, profit_target_percent:10, max_drawdown_percent:20, max_daily_drawdown_percent:10, phases:2 },
 ];
 
 const fallbackInstant: Challenge[] = [

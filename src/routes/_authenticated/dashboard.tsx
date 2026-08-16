@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { formatNaira, formatPercent, formatUSD, calculateBusinessDays, addBusinessDays } from "@/lib/utils";
 import { toast } from "sonner";
-import { LogOut, Plus, Trophy, TrendingUp, Activity, Bell, ShieldCheck, ShieldAlert, Landmark, Sparkles, Check, Clock, XCircle, AlertTriangle } from "lucide-react";
+import { LogOut, Plus, Trophy, TrendingUp, Activity, Bell, ShieldCheck, ShieldAlert, Landmark, Sparkles, Check, Clock, XCircle, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { CertificateCard, type Certificate } from "@/components/certificates/CertificateCard";
 import { subscribeToPush } from "@/lib/push";
 import { NewUserInstallPrompt } from "@/components/NewUserInstallPrompt";
@@ -36,6 +36,7 @@ interface Account {
   status: "active" | "breached" | "passed" | "funded";
   breach_reason?: string;
   challenge_id: string;
+  order_id?: string | null;
   created_at: string;
   phase1_passed_at: string | null;
   phase2_passed_at: string | null;
@@ -44,11 +45,21 @@ interface Account {
   funded_requested_at: string | null;
   phase_rejected_reason?: string | null;
   phase_rejected_at?: string | null;
+  phase_progression_pending?: string | null;
 
   trading_days?: number;
   currency?: string;
   last_payout_date?: string | null;
   challenges?: { name: string; profit_target_percent: number; phase2_profit_target_percent?: number | null; max_drawdown_percent: number; phases: number; min_trading_days?: number; max_daily_drawdown_percent?: number | null; drawdown_type?: string };
+}
+
+interface ChallengeGroup {
+  orderId: string;
+  accounts: Account[];
+  active: Account | null;
+  displayName: string;
+  accountSize: number;
+  currency: string;
 }
 
 interface PartnerFreeAccount {
@@ -118,6 +129,128 @@ const statusVariant: Record<string, string> = {
   funded: "bg-info/15 text-info border-info/30",
 };
 
+function PhaseStepper({ accounts, maxPhases }: { accounts: Account[]; maxPhases: number }) {
+  const steps = Array.from({ length: maxPhases }, (_, i) => i + 1);
+  const getAccountForPhase = (phase: number) => accounts.find((a) => a.current_phase === phase);
+  const fundedAccount = accounts.find((a) => a.status === "funded");
+
+  return (
+    <div className="flex items-center gap-0">
+      {steps.map((phase, idx) => {
+        const acct = getAccountForPhase(phase);
+        const isCompleted = acct?.status === "passed" || !!acct?.phase1_passed_at || !!acct?.phase2_passed_at;
+        const isActive = acct?.status === "active";
+        const isPending = !acct && !isCompleted && !isActive;
+
+        return (
+          <div key={phase} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-display font-bold
+                ${isCompleted ? "border-primary bg-primary text-primary-foreground" : isActive ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground"}`}>
+                {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : phase}
+              </div>
+              <div className="mt-1.5 text-center">
+                <div className={`text-[11px] font-display font-semibold ${isActive ? "text-primary" : isCompleted ? "text-primary/70" : "text-muted-foreground"}`}>
+                  Phase {phase}
+                </div>
+                {acct && (
+                  <div className="text-[10px] text-muted-foreground font-mono">{acct.mt5_login}</div>
+                )}
+              </div>
+            </div>
+            {idx < steps.length - 1 && (
+              <div className={`mx-1 mb-5 h-0.5 flex-1 ${isCompleted ? "bg-primary" : "bg-border"}`} />
+            )}
+          </div>
+        );
+      })}
+      {fundedAccount && (
+        <>
+          <div className="mx-1 mb-5 h-0.5 w-6 bg-primary" />
+          <div className="flex flex-col items-center">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-gold bg-gold/10 text-gold text-xs font-display font-bold">
+              <Trophy className="h-4 w-4" />
+            </div>
+            <div className="mt-1.5 text-center">
+              <div className="text-[11px] font-display font-semibold text-gold">Funded</div>
+              <div className="text-[10px] text-muted-foreground font-mono">{fundedAccount.mt5_login}</div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ChallengeGroupCard({ group, isExpanded, onToggle, children }: {
+  group: ChallengeGroup;
+  isExpanded: boolean;
+  onToggle: () => void;
+  children?: React.ReactNode;
+}) {
+  const fmt = group.currency === "USD" ? formatUSD : formatNaira;
+  const active = group.active;
+  const hasAllPhasesPassed = group.accounts.every((a) => a.status === "passed" || a.status === "funded");
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <button onClick={onToggle} className="w-full p-5 text-left hover:bg-muted/30 transition-colors">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-display text-base font-bold">{group.displayName}</span>
+              <Badge className={`${statusVariant[active?.status ?? "active"]} font-display text-[10px]`}>
+                {active?.status?.toUpperCase() ?? "ACTIVE"}
+              </Badge>
+            </div>
+            <div className="mt-1 text-sm text-muted-foreground">{fmt(group.accountSize)} account</div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="text-right">
+              <div className="font-display text-xs font-semibold">
+                {group.accounts.length === 1
+                  ? active?.current_phase === 1 && active?.challenges?.phases === 1
+                    ? "1-Step"
+                    : `Phase ${active?.current_phase ?? 1}/${active?.challenges?.phases ?? 2}`
+                  : active?.status === "funded"
+                    ? "FUNDED"
+                    : `Phase ${active?.current_phase ?? 1}/${active?.challenges?.phases ?? 2}`
+                }
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                {group.accounts.length} account{group.accounts.length > 1 ? "s" : ""}
+              </div>
+            </div>
+            {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </div>
+        </div>
+        {!isExpanded && active && (
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="font-display text-foreground font-semibold">
+                {active.status === "funded" ? "Funded" : `Phase ${active.current_phase}`}
+              </span>
+            </div>
+            <div className="text-right text-muted-foreground">
+              {active.mt5_login}
+            </div>
+          </div>
+        )}
+      </button>
+      {isExpanded && (
+        <div className="border-t border-border px-5 pb-5">
+          {group.accounts.length > 1 && (
+            <div className="pt-4">
+              <PhaseStepper accounts={group.accounts} maxPhases={active?.challenges?.phases ?? 2} />
+            </div>
+          )}
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DashboardPage() {
   const { user, profile, signOut, refresh } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -142,6 +275,7 @@ function DashboardPage() {
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [blockedReasons, setBlockedReasons] = useState<{ reason: string; current: string; required: string }[]>([]);
   const [blockedType, setBlockedType] = useState<"phase2" | "funded">("phase2");
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const lastEquityRef = useRef<number | null>(null);
   const selectedRef = useRef(selected);
 
@@ -161,6 +295,45 @@ function DashboardPage() {
     }
     return info;
   }, [selected]);
+
+  const challengeGroups = useMemo<ChallengeGroup[]>(() => {
+    const groupMap = new Map<string, Account[]>();
+    for (const account of accounts) {
+      const key = account.order_id || account.id;
+      const arr = groupMap.get(key) ?? [];
+      arr.push(account);
+      groupMap.set(key, arr);
+    }
+    return Array.from(groupMap.entries()).map(([orderId, groupAccounts]) => {
+      groupAccounts.sort((a, b) => a.current_phase - b.current_phase);
+      const active = groupAccounts.find((a) => a.status === "active") ?? groupAccounts[groupAccounts.length - 1];
+      const first = groupAccounts[0];
+      return {
+        orderId,
+        accounts: groupAccounts,
+        active,
+        displayName: first.challenges?.name ?? "Challenge",
+        accountSize: first.starting_balance,
+        currency: first.currency ?? "NGN",
+      };
+    });
+  }, [accounts]);
+
+  // Auto-expand first group if none expanded, and sync selected to expanded group's active account
+  useEffect(() => {
+    if (!expandedGroupId && challengeGroups.length > 0) {
+      setExpandedGroupId(challengeGroups[0].orderId);
+    }
+  }, [challengeGroups, expandedGroupId]);
+
+  useEffect(() => {
+    if (expandedGroupId) {
+      const group = challengeGroups.find((g) => g.orderId === expandedGroupId);
+      if (group?.active && group.active.id !== selected?.id) {
+        setSelected(group.active);
+      }
+    }
+  }, [expandedGroupId, challengeGroups]);
 
   const phaseSnapshots = useMemo(() => {
     const active = phaseInfo.find(p => p.key === selectedPhase);
@@ -307,7 +480,7 @@ function DashboardPage() {
             challenge_id: challengeId || "",
             phase2_requested_at: null,
             funded_requested_at: null,
-            challenges:             chData ?? { name: "Elite", profit_target_percent: 10, max_drawdown_percent: 20, phases: 2, min_trading_days: 3, drawdown_type: "trailing_equity" },
+            challenges:             chData ?? { name: "Elite", profit_target_percent: 10, max_drawdown_percent: 20, phases: 2, min_trading_days: 3, max_daily_drawdown_percent: 10, drawdown_type: "trailing_balance" },
           };
           list.push(freeAccount);
           setAccounts([...list]);
@@ -537,19 +710,23 @@ function DashboardPage() {
   const latestSnapshot = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
   const equity = Number(selected?.current_equity ?? latestSnapshot?.equity ?? selected?.starting_balance ?? 0);
   const start = Number(selected?.starting_balance ?? 0);
-  const profitPct = start ? ((equity - start) / start) * 100 : 0;
+  const drawdownType = selected?.challenges?.drawdown_type ?? "trailing_equity";
+  const isStaticBalance = drawdownType === "static_balance";
+  const isTrailingBalance = drawdownType === "trailing_balance";
+  const balance = Number(latestSnapshot?.balance ?? selected?.current_equity ?? selected?.starting_balance ?? 0);
+  const profitMetric = isStaticBalance || isTrailingBalance ? balance : equity;
+  const profitPct = start ? ((profitMetric - start) / start) * 100 : 0;
   const peakEquity = (() => {
     const dbPeak = Number(selected?.peak_equity ?? 0);
     return dbPeak > 0 ? dbPeak : start;
   })();
   const maxDD = selected?.challenges?.max_drawdown_percent ?? 20;
   const maxDailyDD = selected?.challenges?.max_daily_drawdown_percent ?? null;
-  const drawdownType = selected?.challenges?.drawdown_type ?? "trailing_equity";
-  const isStaticBalance = drawdownType === "static_balance";
-  const balance = Number(latestSnapshot?.balance ?? selected?.current_equity ?? selected?.starting_balance ?? 0);
   const ddPct = isStaticBalance
     ? (start > 0 ? Math.max(0, ((start - balance) / start) * 100) : 0)
-    : (peakEquity > 0 ? Math.max(0, ((peakEquity - equity) / peakEquity) * 100) : 0);
+    : isTrailingBalance
+      ? (peakEquity > 0 ? Math.max(0, ((peakEquity - balance) / peakEquity) * 100) : 0)
+      : (peakEquity > 0 ? Math.max(0, ((peakEquity - equity) / peakEquity) * 100) : 0);
   const target = selected?.current_phase === 2
     ? (selected?.challenges?.phase2_profit_target_percent ?? selected?.challenges?.profit_target_percent ?? 10)
     : (selected?.challenges?.profit_target_percent ?? 10);
@@ -558,8 +735,9 @@ function DashboardPage() {
     const today = new Date().toISOString().slice(0, 10);
     const todaySnaps = snapshots.filter((s) => s.snapshot_time.slice(0, 10) === today);
     if (todaySnaps.length === 0) return 0;
-    const dailyPeak = Math.max(...todaySnaps.map((s) => Number(isStaticBalance ? s.balance : s.equity)), isStaticBalance ? balance : equity);
-    return dailyPeak > 0 ? ((dailyPeak - (isStaticBalance ? balance : equity)) / dailyPeak) * 100 : 0;
+    const useBalance = isStaticBalance || isTrailingBalance;
+    const dailyPeak = Math.max(...todaySnaps.map((s) => Number(useBalance ? s.balance : s.equity)), useBalance ? balance : equity);
+    return dailyPeak > 0 ? ((dailyPeak - (useBalance ? balance : equity)) / dailyPeak) * 100 : 0;
   })();
   const phaseEquity = phaseSnapshots.length > 0 ? Number(phaseSnapshots[phaseSnapshots.length - 1].equity) : equity;
   const phasePeak = phaseSnapshots.length > 0 ? Math.max(...phaseSnapshots.map(s => Number(s.equity))) : peakEquity;
@@ -774,24 +952,41 @@ function DashboardPage() {
               </TabsList>
             </div>
 
-            <TabsContent value="overview" className="mt-6 space-y-6">
-              {accounts.length > 1 && (
-                <div className="flex flex-wrap gap-2">
-                  {accounts.map((a) => (
-                    <button key={a.id} onClick={() => setSelected(a)}
-                      className={`font-display rounded-md border px-3 py-1.5 text-xs ${selected?.id === a.id ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground"}`}>
-                      {a.mt5_login} · {a.challenges?.name}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <TabsContent value="overview" className="mt-6 space-y-4">
+              {notifications.filter((n) => n.type === "warning" && !n.is_read).map((w) => (
+                <Alert key={w.id} variant="default" className="border-warning/50 bg-warning/5">
+                  <ShieldAlert className="h-4 w-4 text-warning" />
+                  <AlertDescription>
+                    <span className="font-display font-semibold text-warning">⚠️ Trading Warning</span>
+                    <p className="mt-1 text-sm">{w.message}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{new Date(w.created_at).toLocaleDateString()}</p>
+                    <Button size="sm" variant="outline" className="mt-3 h-7 text-xs" onClick={async () => {
+                      await supabase.from("notifications").update({ is_read: true } as never).eq("id", w.id);
+                      setNotifications((prev) => prev.filter((x) => x.id !== w.id));
+                    }}>Noted</Button>
+                  </AlertDescription>
+                </Alert>
+              ))}
 
-              {selected && (() => {
+              <div className="grid gap-4 md:grid-cols-2">
+                {challengeGroups.map((group) => {
+                  const isExpanded = expandedGroupId === group.orderId;
+                  return (
+                  <ChallengeGroupCard
+                    key={group.orderId}
+                    group={group}
+                    isExpanded={isExpanded}
+                    onToggle={() => {
+                      setExpandedGroupId(isExpanded ? null : group.orderId);
+                      if (group.active) setSelected(group.active);
+                    }}
+                  >
+                    {isExpanded && selected && (() => {
                 const fmt = selected.currency === "USD" ? formatUSD : formatNaira;
                 return (
                 <>
                   {selected.status === "breached" && selected.breach_reason && (
-                    <Alert variant="destructive">
+                    <Alert variant="destructive" className="mt-4">
                       <ShieldAlert className="h-4 w-4" />
                       <AlertDescription>
                         <span className="font-display font-semibold">Account Breached</span>
@@ -800,23 +995,8 @@ function DashboardPage() {
                     </Alert>
                   )}
 
-                  {notifications.filter((n) => n.type === "warning" && !n.is_read).map((w) => (
-                    <Alert key={w.id} variant="default" className="border-warning/50 bg-warning/5">
-                      <ShieldAlert className="h-4 w-4 text-warning" />
-                      <AlertDescription>
-                        <span className="font-display font-semibold text-warning">⚠️ Trading Warning</span>
-                        <p className="mt-1 text-sm">{w.message}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{new Date(w.created_at).toLocaleDateString()}</p>
-                        <Button size="sm" variant="outline" className="mt-3 h-7 text-xs" onClick={async () => {
-                          await supabase.from("notifications").update({ is_read: true } as never).eq("id", w.id);
-                          setNotifications((prev) => prev.filter((x) => x.id !== w.id));
-                        }}>Noted</Button>
-                      </AlertDescription>
-                    </Alert>
-                  ))}
-
                   {selected.phase_rejected_reason && selected.status !== "breached" && (
-                    <Alert variant="destructive">
+                    <Alert variant="destructive" className="mt-4">
                       <ShieldAlert className="h-4 w-4" />
                       <AlertDescription>
                         <span className="font-display font-semibold">
@@ -827,30 +1007,25 @@ function DashboardPage() {
                     </Alert>
                   )}
 
-                  {(() => {
-                    return (
-                      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-                        {[
-                          { label: "Account Size", value: fmt(start) },
-                          { label: "Equity", value: fmt(equity), color: "text-primary" },
-                          { label: "P/L", value: fmt(equity - start), color: equity-start >= 0 ? "text-primary" : "text-destructive" },
-                          { label: "Drawdown Limit", value: fmt(Math.floor(peakEquity * (1 - maxDD / 100))), color: "text-red-500" },
-                          ...(maxDailyDD ? [{ label: "Daily DD Limit", value: `${maxDailyDD}%`, color: "text-red-500" }] : []),
-                           { label: "Phase", value: selected.status === "funded" ? "FUNDED" : `${selected.current_phase}/${selected.challenges?.phases ?? 2}`, color: "text-gold" },
-                          { label: "Status", value: <Badge className={`${statusVariant[selected.status]} font-display`}>{selected.status.toUpperCase()}</Badge> },
-                        ].map((m, i) => (
-                          <div key={i} className="rounded-xl border border-border bg-card p-5">
-                            <div className="text-xs text-muted-foreground">{m.label}</div>
-                            <div className={`font-display mt-2 text-lg font-bold ${m.color ?? ""}`}>{m.value}</div>
-                          </div>
-                        ))}
+                  <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+                    {[
+                      { label: "Account Size", value: fmt(start) },
+                      { label: "Equity", value: fmt(equity), color: "text-primary" },
+                      { label: "P/L", value: fmt(equity - start), color: equity-start >= 0 ? "text-primary" : "text-destructive" },
+                      { label: "Drawdown Limit", value: fmt(Math.floor(peakEquity * (1 - maxDD / 100))), color: "text-red-500" },
+                      ...(maxDailyDD ? [{ label: "Daily DD Limit", value: `${maxDailyDD}%`, color: "text-red-500" }] : []),
+                      { label: "Status", value: <Badge className={`${statusVariant[selected.status]} font-display`}>{selected.status.toUpperCase()}</Badge> },
+                    ].map((m, i) => (
+                      <div key={i} className="rounded-lg border border-border bg-background/50 p-3">
+                        <div className="text-[10px] text-muted-foreground">{m.label}</div>
+                        <div className={`font-display mt-1 text-sm font-bold ${m.color ?? ""}`}>{m.value}</div>
                       </div>
-                    );
-                  })()}
+                    ))}
+                  </div>
 
-                  <div className="rounded-xl border border-border bg-card p-6">
-                     <h3 className="font-display flex items-center gap-2 text-base font-semibold"><TrendingUp className="h-4 w-4 text-primary"/>{selected.status === "funded" ? "Funded Progress" : `Phase ${selected.current_phase} Progress`}</h3>
-                     <div className="mt-5 space-y-5">
+                  <div className="mt-4 rounded-lg border border-border bg-background/50 p-4">
+                     <h3 className="font-display flex items-center gap-2 text-sm font-semibold"><TrendingUp className="h-3.5 w-3.5 text-primary"/>{selected.status === "funded" ? "Funded Progress" : `Phase ${selected.current_phase} Progress`}</h3>
+                     <div className="mt-4 space-y-4">
                        <div>
                          <div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">Profit Target</span><span className="font-display text-primary">{formatPercent(Math.max(0, profitPct))} / {target}%</span></div>
                          <Progress value={Math.min(100, Math.max(0, (profitPct / target) * 100))} />
@@ -864,88 +1039,54 @@ function DashboardPage() {
                            <div className="mb-1 flex justify-between text-xs">
                              <div className="flex items-center gap-2">
                                <span className="text-muted-foreground">Daily Drawdown</span>
-                               <span className="font-mono text-[10px] text-muted-foreground/60">↻ resets in {ddCountdown}</span>
+                               <span className="font-mono text-[10px] text-muted-foreground/60">↻ {ddCountdown}</span>
                              </div>
                              <span className={`font-display ${dailyDrawdownPercent/maxDailyDD>0.75?"text-destructive":dailyDrawdownPercent/maxDailyDD>0.5?"text-warning":"text-primary"}`}>{formatPercent(dailyDrawdownPercent)} / {maxDailyDD}%</span>
                            </div>
                           <Progress value={Math.min(100, (dailyDrawdownPercent/maxDailyDD)*100)} />
                        </div>
                        ) : null}
-                       {(() => {
-                         const isUSD = selected.currency === "USD";
-                         if (!isUSD) return null;
-                         const daysTraded = selected.trading_days ?? 0;
-                         const minProfitableDays = 5;
-                         const profitableDayThreshold = 0.005;
-                         return (
-                           <div className="mt-4 space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
-                             <div className="font-display text-sm font-semibold text-primary">USD Compliance Checklist</div>
-                             <div className="space-y-1.5 text-xs">
-                                <div className="flex items-center gap-2">
-                                  <span className={dailyDrawdownPercent <= 5 ? "text-green-500" : "text-red-500"}>{dailyDrawdownPercent <= 5 ? "✅" : "❌"}</span>
-                                  <span className="text-muted-foreground">Daily Drawdown ≤ 5% — Current: {formatPercent(dailyDrawdownPercent)}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className={ddPct <= 10 ? "text-green-500" : "text-red-500"}>{ddPct <= 10 ? "✅" : "❌"}</span>
-                                  <span className="text-muted-foreground">{isStaticBalance ? "Static Drawdown" : "Total Drawdown"} ≤ 10% — Current: {formatPercent(ddPct)}</span>
-                                </div>
-                               <div className="flex items-center gap-2">
-                                 <span className={daysTraded >= minProfitableDays ? "text-green-500" : "text-red-500"}>{daysTraded >= minProfitableDays ? "✅" : "❌"}</span>
-                                 <span className="text-muted-foreground">Profitable Days: {daysTraded} of {minProfitableDays} required (≥0.5% profit each)</span>
-                               </div>
-                               <div className="flex items-center gap-2">
-                                 <span className="text-amber-500">⚠️</span>
-                                 <span className="text-muted-foreground">News Trading: profits within 5 mins of red-folder events are voided</span>
-                               </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-amber-500">⚠️</span>
-                                  <span className="text-muted-foreground">No weekend holding · No news trading within 5 min</span>
-                                </div>
-                             </div>
-                           </div>
-                         );
-                       })()}
                      </div>
                      {selected.status !== "funded" && selected.current_phase < 2 && selected.status === "active" && (
-                      <div className="mt-5 rounded-md border border-primary/30 bg-primary/5 p-4">
+                      <div className="mt-4 rounded-md border border-primary/30 bg-primary/5 p-3">
                         {phase2Requested ? (
                           <div className="flex items-center gap-2 text-sm">
                             <Clock className="h-4 w-4 text-warning" />
-                            <span className="font-display">Phase 2 approval requested — awaiting admin review.</span>
+                            <span className="font-display text-xs">Phase 2 approval requested — awaiting admin review.</span>
                           </div>
                         ) : canRequestPhase2 ? (
                           <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="text-sm">
-                              <div className="font-display font-semibold text-primary">🎯 You hit the {target}% target!</div>
-                              <p className="text-xs text-muted-foreground">Request phase 2 approval — an admin will review and progress your account.</p>
+                            <div>
+                              <div className="font-display text-xs font-semibold text-primary">🎯 You hit the {target}% target!</div>
+                              <p className="text-[11px] text-muted-foreground">Request phase 2 approval.</p>
                             </div>
-                            <Button size="sm" onClick={requestPhase2}>Request Phase 2 Approval</Button>
+                            <Button size="sm" onClick={requestPhase2}>Request Phase 2</Button>
                           </div>
                         ) : (
-                          <p className="text-xs text-muted-foreground">
-                            Reach {target}% profit ({fmt(Math.ceil(start * (1 + target / 100)))} equity) to request phase 2 approval.
+                          <p className="text-[11px] text-muted-foreground">
+                            Reach {target}% profit to request phase 2 approval.
                           </p>
                         )}
                       </div>
                     )}
                      {selected.status !== "funded" && selected.current_phase >= 2 && selected.status === "active" && (
-                      <div className="mt-5 rounded-md border border-gold/30 bg-gold/5 p-4">
+                      <div className="mt-4 rounded-md border border-gold/30 bg-gold/5 p-3">
                         {fundedRequested ? (
                           <div className="flex items-center gap-2 text-sm">
                             <Clock className="h-4 w-4 text-warning" />
-                            <span className="font-display">Funded approval requested — awaiting admin review.</span>
+                            <span className="font-display text-xs">Funded approval requested — awaiting admin review.</span>
                           </div>
                         ) : canRequestFunded ? (
                           <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="text-sm">
-                              <div className="font-display font-semibold text-gold">🏆 You hit the {target}% target!</div>
-                              <p className="text-xs text-muted-foreground">Request funded approval — an admin will review and fund your account.</p>
+                            <div>
+                              <div className="font-display text-xs font-semibold text-gold">🏆 You hit the {target}% target!</div>
+                              <p className="text-[11px] text-muted-foreground">Request funded approval.</p>
                             </div>
-                            <Button size="sm" onClick={requestFunded}>Request Funded Approval</Button>
+                            <Button size="sm" onClick={requestFunded}>Request Funded</Button>
                           </div>
                         ) : (
-                          <p className="text-xs text-muted-foreground">
-                            Reach {target}% profit ({fmt(Math.ceil(start * (1 + target / 100)))} equity) to request funded approval.
+                          <p className="text-[11px] text-muted-foreground">
+                            Reach {target}% profit to request funded approval.
                           </p>
                         )}
                       </div>
@@ -953,112 +1094,111 @@ function DashboardPage() {
                   </div>
 
                   {snapshots.length > 1 ? (
-                    <div className="rounded-xl border border-border bg-card p-6">
-                      <h3 className="font-display flex items-center gap-2 text-base font-semibold"><Activity className="h-4 w-4 text-primary"/>Equity Curve{liveStatus === 'live' ? (
+                    <div className="mt-4 rounded-lg border border-border bg-background/50 p-4">
+                      <h3 className="font-display flex items-center gap-2 text-sm font-semibold"><Activity className="h-3.5 w-3.5 text-primary"/>Equity Curve{liveStatus === 'live' ? (
             <span className="ml-auto flex items-center gap-1">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
               </span>
-              <span className="text-xs font-display text-green-500">Live</span>
+              <span className="text-[10px] font-display text-green-500">Live</span>
             </span>
           ) : liveStatus === 'connecting' ? (
             <span className="ml-auto flex items-center gap-1">
               <span className="relative flex h-2 w-2">
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-muted-foreground" />
               </span>
-              <span className="text-xs font-display text-muted-foreground">Connecting...</span>
+              <span className="text-[10px] font-display text-muted-foreground">Connecting...</span>
             </span>
           ) : (
             <span className="ml-auto flex items-center gap-1">
               <span className="relative flex h-2 w-2">
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
               </span>
-              <span className="text-xs font-display text-red-500">Reconnecting...</span>
+              <span className="text-[10px] font-display text-red-500">Reconnecting...</span>
             </span>
           )}</h3>
-                      <div className="mt-4 h-56">
+                      <div className="mt-3 h-48">
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={snapshots}>
                             <XAxis dataKey="snapshot_time" hide />
                             <YAxis
-                              tick={{ fontSize: 11, fill: "currentColor" }}
+                              tick={{ fontSize: 10, fill: "currentColor" }}
                               stroke="currentColor"
                               className="text-muted-foreground"
                               domain={["auto", "auto"]}
                               tickFormatter={(v) => fmt(v)}
                             />
                             <Tooltip
-                              contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }}
+                              contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
                               formatter={(v: number, name: string) => [fmt(v), name === "equity" ? "Equity" : name === "balance" ? "Balance" : name]}
                             />
                             <Line type="monotone" dataKey="equity" stroke="var(--primary)" strokeWidth={2} dot={false} />
                             <Line type="monotone" dataKey="balance" stroke="var(--warning)" strokeWidth={1.5} dot={false} strokeDasharray="5 5" />
-                            <ReferenceLine y={drawdownLimit} stroke="hsl(0, 84%, 60%)" strokeWidth={1.5} strokeDasharray="3 3" label={{ value: `Drawdown Limit: ${fmt(drawdownLimit)}`, position: "insideTopLeft", fill: "hsl(0, 84%, 60%)", fontSize: 10 }} />
-                            <ReferenceLine y={profitTarget} stroke="hsl(142, 76%, 36%)" strokeWidth={1.5} strokeDasharray="3 3" label={{ value: `Target: ${fmt(profitTarget)}`, position: "insideTopRight", fill: "hsl(142, 76%, 36%)", fontSize: 10 }} />
-                            <ReferenceLine y={currentBalance} stroke="hsl(45, 93%, 47%)" strokeWidth={1} strokeDasharray="4 4" label={{ value: `Balance: ${fmt(currentBalance)}`, position: "insideBottomRight", fill: "hsl(45, 93%, 47%)", fontSize: 10 }} />
+                            <ReferenceLine y={drawdownLimit} stroke="hsl(0, 84%, 60%)" strokeWidth={1.5} strokeDasharray="3 3" label={{ value: `DD Limit: ${fmt(drawdownLimit)}`, position: "insideTopLeft", fill: "hsl(0, 84%, 60%)", fontSize: 9 }} />
+                            <ReferenceLine y={profitTarget} stroke="hsl(142, 76%, 36%)" strokeWidth={1.5} strokeDasharray="3 3" label={{ value: `Target: ${fmt(profitTarget)}`, position: "insideTopRight", fill: "hsl(142, 76%, 36%)", fontSize: 9 }} />
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
                     </div>
                   ) : snapshots.length > 0 ? (
-                    <div className="rounded-xl border border-border bg-card p-6">
-                      <h3 className="font-display flex items-center gap-2 text-base font-semibold"><Activity className="h-4 w-4 text-primary"/>Equity Curve{liveStatus === 'live' ? (
+                    <div className="mt-4 rounded-lg border border-border bg-background/50 p-4">
+                      <h3 className="font-display flex items-center gap-2 text-sm font-semibold"><Activity className="h-3.5 w-3.5 text-primary"/>Equity Curve{liveStatus === 'live' ? (
             <span className="ml-auto flex items-center gap-1">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
               </span>
-              <span className="text-xs font-display text-green-500">Live</span>
+              <span className="text-[10px] font-display text-green-500">Live</span>
             </span>
           ) : liveStatus === 'connecting' ? (
             <span className="ml-auto flex items-center gap-1">
               <span className="relative flex h-2 w-2">
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-muted-foreground" />
               </span>
-              <span className="text-xs font-display text-muted-foreground">Connecting...</span>
+              <span className="text-[10px] font-display text-muted-foreground">Connecting...</span>
             </span>
           ) : (
             <span className="ml-auto flex items-center gap-1">
               <span className="relative flex h-2 w-2">
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
               </span>
-              <span className="text-xs font-display text-red-500">Reconnecting...</span>
+              <span className="text-[10px] font-display text-red-500">Reconnecting...</span>
             </span>
           )}</h3>
-                      <p className="mt-4 text-sm text-muted-foreground">Not enough data yet. The equity sync runs every minute — check back soon.</p>
+                      <p className="mt-3 text-xs text-muted-foreground">Not enough data yet. The equity sync runs every minute — check back soon.</p>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-border bg-card p-6">
-                      <h3 className="font-display flex items-center gap-2 text-base font-semibold"><Activity className="h-4 w-4 text-primary"/>Equity Curve{liveStatus === 'live' ? (
+                    <div className="mt-4 rounded-lg border border-border bg-background/50 p-4">
+                      <h3 className="font-display flex items-center gap-2 text-sm font-semibold"><Activity className="h-3.5 w-3.5 text-primary"/>Equity Curve{liveStatus === 'live' ? (
             <span className="ml-auto flex items-center gap-1">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
               </span>
-              <span className="text-xs font-display text-green-500">Live</span>
+              <span className="text-[10px] font-display text-green-500">Live</span>
             </span>
           ) : liveStatus === 'connecting' ? (
             <span className="ml-auto flex items-center gap-1">
               <span className="relative flex h-2 w-2">
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-muted-foreground" />
               </span>
-              <span className="text-xs font-display text-muted-foreground">Connecting...</span>
+              <span className="text-[10px] font-display text-muted-foreground">Connecting...</span>
             </span>
           ) : (
             <span className="ml-auto flex items-center gap-1">
               <span className="relative flex h-2 w-2">
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
               </span>
-              <span className="text-xs font-display text-red-500">Reconnecting...</span>
+              <span className="text-[10px] font-display text-red-500">Reconnecting...</span>
             </span>
           )}</h3>
-                      <p className="mt-4 text-sm text-muted-foreground">No equity data yet. The equity sync runs every minute — check back soon.</p>
+                      <p className="mt-3 text-xs text-muted-foreground">No equity data yet. The equity sync runs every minute — check back soon.</p>
                     </div>
                   )}
 
                   {phaseInfo.length > 1 && (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       {phaseInfo.map((p) => (
                         <button key={p.key} onClick={() => setSelectedPhase(p.key)}
                           className={`font-display rounded-md border px-3 py-1.5 text-xs ${selectedPhase === p.key ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground"}`}>
@@ -1086,96 +1226,19 @@ function DashboardPage() {
                     />
                   )}
 
-                  <div className="rounded-xl border border-border bg-card p-6">
-                    <h3 className="font-display text-base font-semibold">MT5 Credentials</h3>
-                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="mt-4 rounded-lg border border-border bg-background/50 p-4">
+                    <h3 className="font-display text-sm font-semibold">MT5 Credentials</h3>
+                    <div className="mt-3 grid gap-2 md:grid-cols-3">
                       {[["Login", selected.mt5_login],["Password", selected.mt5_password],["Server", selected.mt5_server]].map(([l, v]) => (
-                        <div key={l} className="rounded-md border border-border bg-background p-3">
-                          <div className="text-[11px] text-muted-foreground">{l}</div>
-                          <div className="font-display mt-1 text-sm text-primary break-all">{v}</div>
+                        <div key={l} className="rounded-md border border-border bg-card p-2.5">
+                          <div className="text-[10px] text-muted-foreground">{l}</div>
+                          <div className="font-display mt-0.5 text-xs text-primary break-all">{v}</div>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* KYC: bank account on file (only KYC field) */}
-                  <div className={`rounded-xl border p-6 ${kycVerified ? "border-primary/30 bg-primary/5" : "border-warning/40 bg-warning/5"}`}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h3 className="font-display flex items-center gap-2 text-base font-semibold">
-                          {kycVerified ? <ShieldCheck className="h-4 w-4 text-primary"/> : <ShieldAlert className="h-4 w-4 text-warning"/>}
-                          KYC — Payout Bank Account
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          We verify your bank instantly via Paystack. The account name must match the name on your trader profile. Payouts go only to this account.
-                        </p>
-                      </div>
-                      <Badge className={`font-display ${kycVerified ? "bg-primary/15 text-primary border-primary/30" : "bg-warning/15 text-warning border-warning/30"}`}>
-                        {kycVerified ? "VERIFIED" : "PENDING"}
-                      </Badge>
-                    </div>
-                    {kycVerified ? (
-                      <div className="mt-5 rounded-md border border-border bg-background p-3 text-sm">
-                        <div className="text-[11px] text-muted-foreground">Verified bank account</div>
-                        <div className="font-display mt-1 text-primary break-words">
-                          {bankAccountNumber || profile.bank_account_number} · {bankName || profile.bank_name} · {bankAccountName || profile.bank_account_name}
-                        </div>
-                        <p className="mt-2 text-[11px] text-muted-foreground">
-                          Need to change it? Re-verify with new details — KYC will reset until the new account passes.
-                        </p>
-                      </div>
-                    ) : null}
-                    <div className="mt-5 grid gap-3 md:grid-cols-2">
-                      <div>
-                        <Label htmlFor="bank-acct">Account number</Label>
-                        <Input id="bank-acct" inputMode="numeric" maxLength={10} placeholder="10-digit NUBAN" className="mt-1 font-mono" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value.replace(/\D/g, ""))} />
-                      </div>
-                      <div>
-                        <Label htmlFor="bank-select">Bank</Label>
-                        <Select value={bankCode} onValueChange={(v) => { setBankCode(v); setBankName(banks.find((b) => b.code === v)?.name ?? ""); }}>
-                          <SelectTrigger id="bank-select" className="mt-1">
-                            <SelectValue placeholder={banks.length ? "Select your bank" : "Loading banks…"} />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-72">
-                            {banks.map((b) => (
-                              <SelectItem key={b.code} value={b.code}>{b.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                 <p className="mt-3 text-[11px] text-muted-foreground">
-                   KYC is only available after you become a funded trader. {selected?.status !== "funded" && <span className="font-display text-warning">Complete your challenge to unlock this feature.</span>}
-                   {selected?.status === "funded" && <>We'll fetch the registered account name from your bank and approve KYC instantly if it matches your profile name (<span className="font-display text-foreground">{profile?.full_name || "—"}</span>).</>}
-                 </p>
-                      <Button size="sm" className="mt-4 font-display" onClick={verifyBankWithPaystack} disabled={verifyingKyc || !bankCode || bankAccountNumber.length !== 10 || selected?.status !== "funded"}>
-                       <Landmark className="mr-1 h-4 w-4"/>{verifyingKyc ? "Verifying…" : kycVerified ? "Re-verify bank" : "Verify bank account"}
-                    </Button>
-                   </div>
-
-                    {/* KYC document upload (alternative to bank verification) */}
-                    <div className="mt-4 rounded-xl border border-border bg-card p-4">
-                      <div className="font-display text-sm font-semibold">KYC Document Upload</div>
-                      <p className="mt-1 text-xs text-muted-foreground">For USD accounts or as an alternative to bank verification, upload a valid government-issued ID or passport. Max 5MB (PNG, JPG, PDF).</p>
-                      {profile?.kyc_document_url && !kycVerified ? (
-                        <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
-                          <span className="font-semibold text-amber-500">Document submitted — </span>
-                          <span className="text-muted-foreground">awaiting admin review. Check back later.</span>
-                        </div>
-                      ) : null}
-                      {!kycVerified && (
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-                          <div className="flex-1">
-                            <Input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={(e) => setKycDocFile(e.target.files?.[0] ?? null)} className="file:mr-2 file:rounded file:border-0 file:bg-primary/10 file:px-2 file:py-1 file:text-xs file:font-medium file:text-primary" />
-                          </div>
-                          <Button size="sm" variant="outline" onClick={uploadKycDocument} disabled={kycDocUploading || !kycDocFile}>
-                            {kycDocUploading ? "Uploading…" : "Upload document"}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-
-                    {selected.status === "funded" && (
+                  {selected.status === "funded" && (
                     <>
                       {(() => {
                         const isUSD = selected.currency === "USD";
@@ -1196,64 +1259,66 @@ function DashboardPage() {
                           : null;
                         const ready = !next || next.getTime() <= Date.now();
                         return (
-                          <>
+                          <div className="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-4">
                             {next && <PayoutCountdown nextPayoutDate={next} businessDays={cooldownDays} isUsd={isUSD} />}
-                            <div className="rounded-xl border border-primary/40 bg-primary/5 p-6">
-                              <h3 className="font-display text-lg font-bold text-primary">🎉 You're funded — request payout</h3>
-                               <p className="mt-1 text-sm text-muted-foreground">
-                                  80% of profits paid to your verified bank account, processed within 24hrs of approval. {isUSD ? "10 business days" : "7 calendar days"} between requests · {isUSD ? "first 2 payouts capped at 6%, subsequent at 10%" : "min 10% / max 50% of account size"}.
-                                </p>
-                                <p className="mt-1 text-[11px] text-muted-foreground">
-                                  {isUSD
-                                    ? <><span className="font-display text-foreground">First 2 payouts:</span> capped at 6% of account size each (you receive 80% of profit). Subsequent payouts use the 10% cap.</>
-                                    : <><span className="font-display text-foreground">First payout:</span> capped at 10% of account size (you receive 80% of profit). Subsequent payouts use the full 50% cap.</>
-                                  }
+                            <h3 className="font-display text-sm font-bold text-primary">🎉 You're funded — request payout</h3>
+                             <p className="mt-1 text-xs text-muted-foreground">
+                                80% of profits paid to your verified bank account. {isUSD ? "10 business days" : "7 calendar days"} between requests.
+                             </p>
+                             {kycVerified && profile.bank_account_number && (
+                               <div className="mt-3 rounded-md border border-border bg-background p-2.5 text-xs">
+                                 <div className="text-[10px] text-muted-foreground">Payout destination</div>
+                                 <div className="font-display mt-0.5 text-primary break-words">
+                                   {profile.bank_account_number} · {profile.bank_name} · {profile.bank_account_name}
+                                 </div>
+                               </div>
+                             )}
+                             {ready ? (
+                               <Button size="sm" className="font-display mt-3" onClick={requestPayout} disabled={submitting || !kycVerified}>
+                                 {submitting ? "Submitting…" : "Request payout →"}
+                               </Button>
+                             ) : (
+                               <p className="mt-3 text-[11px] text-muted-foreground">
+                                 Request button unlocks when the countdown above hits zero.
                                </p>
-                               {!kycVerified && (
-                                 <Alert variant="destructive" className="mt-3">
-                                   <AlertDescription>Your bank account is awaiting admin verification before payouts are released.</AlertDescription>
-                                 </Alert>
-                               )}
-                               {kycVerified && profile.bank_account_number && (
-                                <div className="mt-4 rounded-md border border-border bg-background p-3 text-sm">
-                                  <div className="text-[11px] text-muted-foreground">Payout destination</div>
-                                  <div className="font-display mt-1 text-primary break-words">
-                                    {profile.bank_account_number} · {profile.bank_name} · {profile.bank_account_name}
-                                  </div>
-                                </div>
-                              )}
-                              {ready ? (
-                                <Button className="font-display mt-4" onClick={requestPayout} disabled={submitting || !kycVerified}>
-                                  {submitting ? "Submitting…" : "Request payout →"}
-                                </Button>
-                              ) : (
-                                <p className="mt-4 text-xs text-muted-foreground">
-                                  Request button unlocks when the countdown above hits zero.
-                                </p>
-                              )}
-                            </div>
-                          </>
+                             )}
+                          </div>
                         );
                       })()}
                     </>
                   )}
                 </>
               ); })()}
+                  </ChallengeGroupCard>
+                  );
+                })}
+              </div>
             </TabsContent>
 
-            <TabsContent value="accounts" className="mt-6 space-y-3">
-              {accounts.map((a) => (
-                <div key={a.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-card p-5">
-                  <div className="flex-1 min-w-[160px]">
-                    <div className="font-display text-primary">{a.mt5_login}</div>
-                    <div className="text-xs text-muted-foreground">{a.challenges?.name}</div>
+            <TabsContent value="accounts" className="mt-6 space-y-4">
+              {challengeGroups.map((group) => (
+                <div key={group.orderId} className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex-1 min-w-[160px]">
+                      <div className="font-display font-semibold">{group.displayName}</div>
+                      <div className="text-xs text-muted-foreground">{group.currency === "USD" ? formatUSD(group.accountSize) : formatNaira(group.accountSize)} · {group.accounts.length} account{group.accounts.length > 1 ? "s" : ""}</div>
+                    </div>
                   </div>
-                  <div className="text-sm">{a.currency === "USD" ? formatUSD(a.starting_balance) : formatNaira(a.starting_balance)}</div>
-                  <div className="font-display text-sm text-gold">{a.status === "funded" ? "FUNDED" : `Phase ${a.current_phase}/${a.challenges?.phases ?? 2}`}</div>
-                    <Badge className={`${statusVariant[a.status]} font-display`}>{a.status.toUpperCase()}</Badge>
-                  {a.status === "breached" && a.breach_reason && (
-                    <p className="w-full text-xs text-destructive">{a.breach_reason}</p>
-                  )}
+                  <div className="mt-3 space-y-2">
+                    {group.accounts.map((a) => (
+                      <div key={a.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-background/50 p-3">
+                        <div className="flex-1 min-w-[120px]">
+                          <div className="font-display text-sm text-primary">{a.mt5_login}</div>
+                          <div className="text-[10px] text-muted-foreground">{a.currency === "USD" ? formatUSD(a.starting_balance) : formatNaira(a.starting_balance)}</div>
+                        </div>
+                        <div className="font-display text-xs text-gold">{a.status === "funded" ? "FUNDED" : `Phase ${a.current_phase}/${a.challenges?.phases ?? 2}`}</div>
+                        <Badge className={`${statusVariant[a.status]} font-display text-[10px]`}>{a.status.toUpperCase()}</Badge>
+                        {a.status === "breached" && a.breach_reason && (
+                          <p className="w-full text-[11px] text-destructive">{a.breach_reason}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </TabsContent>

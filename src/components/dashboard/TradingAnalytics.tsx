@@ -62,6 +62,16 @@ function getPeakDrawdown(snapshots: Snapshot[], startingBalance: number, drawdow
     }
     return maxDD;
   }
+  if (drawdownType === "trailing_balance") {
+    let peak = startingBalance;
+    let maxDD = 0;
+    for (const s of snapshots) {
+      if (s.balance > peak) peak = s.balance;
+      const dd = peak > 0 ? ((peak - s.balance) / peak) * 100 : 0;
+      if (dd > maxDD) maxDD = dd;
+    }
+    return maxDD;
+  }
   let peak = startingBalance;
   let maxDD = 0;
   for (const s of snapshots) {
@@ -190,6 +200,7 @@ export function TradingAnalytics({
   currentDrawdownPercent,
 }: TradingAnalyticsProps) {
   const isStaticBalance = drawdownType === "static_balance";
+  const isTrailingBalance = drawdownType === "trailing_balance";
   const chartData = getEquityChartData(snapshots, startingBalance);
   const dailyPL = getDailyPL(snapshots);
   const daysTraded = tradingDays;
@@ -197,15 +208,17 @@ export function TradingAnalytics({
   const currentDD = currentDrawdownPercent != null
     ? Math.max(0, currentDrawdownPercent)
     : peakDD;
-  const profitPct = startingBalance > 0 ? ((currentEquity - startingBalance) / startingBalance) * 100 : 0;
-  const totalPL = currentEquity - startingBalance;
+  const latestBalance = snapshots.length > 0 ? Number(snapshots[snapshots.length - 1].balance) : currentEquity;
+  const profitMetric = isStaticBalance || isTrailingBalance ? latestBalance : currentEquity;
+  const profitPct = startingBalance > 0 ? ((profitMetric - startingBalance) / startingBalance) * 100 : 0;
+  const totalPL = profitMetric - startingBalance;
   const isProfit = totalPL >= 0;
 
   const fmt = currency === "USD" ? formatUSD : formatNaira;
 
   const drawdownLimit = isStaticBalance
     ? startingBalance * (1 - maxDrawdownPercent / 100)
-    : Math.max(startingBalance, currentEquity) * (1 - maxDrawdownPercent / 100);
+    : Math.max(startingBalance, profitMetric) * (1 - maxDrawdownPercent / 100);
   const profitTargetEquity = startingBalance * (1 + profitTargetPercent / 100);
 
   const tradeCount = snapshots.length;

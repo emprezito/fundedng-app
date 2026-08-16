@@ -548,12 +548,12 @@ function BuyPage() {
                         </span>
                       </div>
 
-                      {/* Daily Drawdown — Instant Challenges only */}
-                      {effectivePlanType === "instant" && (
+                      {/* Daily Drawdown — all NGN challenges */}
+                      {currency === "NGN" && (
                         <div className="flex items-center justify-between border-b border-border pb-2">
                           <span className="text-muted-foreground">Daily Drawdown</span>
                           <span className="font-display font-semibold">
-                            {`${selected?.max_daily_drawdown_percent ?? 5}%`}
+                            {`${selected?.max_daily_drawdown_percent ?? 10}%`}
                           </span>
                         </div>
                       )}
@@ -638,7 +638,7 @@ function BuyPage() {
                       ? [
                           { icon: ShieldCheck, label: "Profit target", value: `${selected?.profit_target_percent ?? 0}%` },
                           { icon: Zap, label: "Max total drawdown", value: `${selected?.max_drawdown_percent ?? 0}%` },
-                          { icon: AlertTriangle, label: "Daily drawdown", value: `${selected?.max_daily_drawdown_percent ?? 5}%` },
+                          { icon: AlertTriangle, label: "Daily drawdown", value: `${selected?.max_daily_drawdown_percent ?? 10}%` },
                           { icon: Clock, label: "Trading window", value: `5 – ${selected?.max_trading_days ?? 45} days` },
                           { icon: Layers, label: "Phases", value: "1-Step (Instant)" },
                           { icon: Wallet, label: "Profit split", value: "80%" },
@@ -660,6 +660,7 @@ function BuyPage() {
                         : [
                           { icon: ShieldCheck, label: "Profit target / phase", value: selected?.phase2_profit_target_percent ? `${selected?.profit_target_percent ?? 0}% / ${selected?.phase2_profit_target_percent}%` : `${selected?.profit_target_percent ?? 0}%` },
                           { icon: Zap, label: "Max drawdown", value: `${selected?.max_drawdown_percent ?? 0}%` },
+                          { icon: AlertTriangle, label: "Daily drawdown", value: `${selected?.max_daily_drawdown_percent ?? 10}%` },
                           { icon: Layers, label: "Phases to funded", value: `${selected?.phases ?? 2}` },
                           { icon: Clock, label: "Min trading days", value: `${selected?.min_trading_days ?? 3}` },
                           { icon: Wallet, label: "Profit split", value: "80%" },
@@ -680,7 +681,7 @@ function BuyPage() {
                   <span className="font-display block font-semibold text-warning">Rules reminder</span>
                     {currency === "USD"
                       ? "USD accounts: Min 3-minute hold on all trades (SL, TP, manual). Max 2 positions per symbol; no averaging into losers. 10% static drawdown from starting balance (based on closed balance, not floating equity). 5% daily drawdown (resets midnight UTC). No weekend holding — all positions must close before Friday 21:00 UTC (crypto exempt). News blackout: 5 minutes before/after high-impact events. 5 profitable trading days required per phase — each day must show >=0.5% net profit on your starting balance. Max 5 payouts per account. 10 business days between payouts. Inactivity limit: 15 days."
-                      : "Trade only on your FundedNG MT5 evaluation account. No automated trading. No copy trading. All trades must be held at least 3 minutes (manual, SL, and TP closes all count). Max 2 positions per symbol; no averaging into losers. 20% trailing drawdown from highest equity peak."}
+                      : "Trade only on your FundedNG MT5 evaluation account. No automated trading. No copy trading. All trades must be held at least 3 minutes (manual, SL, and TP closes all count). Max 2 positions per symbol; no averaging into losers. 20% trailing drawdown based on closed balance (from the highest balance reached — floating losses don't count). 10% max daily loss from the day's highest balance (resets midnight UTC). Profit target is measured on closed balance."}
                 </div>
 
                 <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-background/50 p-3 text-xs">

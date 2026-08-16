@@ -134,11 +134,13 @@ function ChallengesPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label>Drawdown Calculation</Label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button type="button" onClick={() => setChallengeForm({ ...challengeForm, drawdown_type: "trailing_equity" })}
-                    className={`rounded-md border px-3 py-2 text-sm font-display ${challengeForm.drawdown_type !== "static_balance" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Trailing (Equity)</button>
+                    className={`rounded-md border px-3 py-2 text-sm font-display ${challengeForm.drawdown_type === "trailing_equity" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Trailing (Equity)</button>
                   <button type="button" onClick={() => setChallengeForm({ ...challengeForm, drawdown_type: "static_balance" })}
                     className={`rounded-md border px-3 py-2 text-sm font-display ${challengeForm.drawdown_type === "static_balance" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Static (Balance)</button>
+                  <button type="button" onClick={() => setChallengeForm({ ...challengeForm, drawdown_type: "trailing_balance" })}
+                    className={`rounded-md border px-3 py-2 text-sm font-display ${challengeForm.drawdown_type === "trailing_balance" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Trailing (Balance)</button>
                 </div>
               </div>
             </div>
