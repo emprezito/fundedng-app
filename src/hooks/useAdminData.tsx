@@ -94,12 +94,12 @@ function useAdminDataHook() {
   const [payoutRejectReason, setPayoutRejectReason] = useState("");
   const [payoutRejecting, setPayoutRejecting] = useState(false);
   const [poolAccounts, setPoolAccounts] = useState<any[]>([]);
-  const [poolInventory, setPoolInventory] = useState<Record<string, number>>({});
+  const [poolInventory, setPoolInventory] = useState<Record<string, Record<number, number>>>({});
   const [poolLoading, setPoolLoading] = useState(false);
   const [poolFormOpen, setPoolFormOpen] = useState(false);
   const [poolSaving, setPoolSaving] = useState(false);
   const [viewCredsFor, setViewCredsFor] = useState<any | null>(null);
-  const [poolForm, setPoolForm] = useState({ mt5_login: "", mt5_password: "", investor_password: "", mt5_server: "Exness-MT5Trial9", account_size_ngn: "", account_size_usd: "", currency: "NGN", notes: "" });
+  const [poolForm, setPoolForm] = useState({ mt5_login: "", mt5_password: "", investor_password: "", mt5_server: "Exness-MT5Trial9", account_size_ngn: "", account_size_usd: "", currency: "NGN", phase: "1", notes: "" });
   const [socialItems, setSocialItems] = useState<any[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState("");

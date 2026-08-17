@@ -285,24 +285,25 @@ export const updatePayoutServer = createServerFn({ method: "POST" })
             .update({ status: "closed" } as never)
             .eq("id", account.id);
 
-          // 2. Provision new account from pool
-          const newOrderId = crypto.randomUUID();
-          const poolResult = await claimPoolAccount({
-            orderId: newOrderId,
-            accountSizeNgn: currency === "USD" ? 0 : startingBalance,
-            accountSizeUsd: currency === "USD" ? startingBalance : undefined,
-            currency,
-            challengeId: challengeId ?? "",
-            userId: traderUserId,
-            phaseProgression: true,
-          });
+           // 2. Provision new account from pool
+           const newOrderId = crypto.randomUUID();
+           const poolResult = await claimPoolAccount({
+             orderId: newOrderId,
+             accountSizeNgn: currency === "USD" ? 0 : startingBalance,
+             accountSizeUsd: currency === "USD" ? startingBalance : undefined,
+             currency,
+             challengeId: challengeId ?? "",
+             userId: traderUserId,
+             phase: oldPhase,
+             phaseProgression: true,
+           });
 
-          if (poolResult.ok) {
-            // 3. Set correct phase on new account
-            await supabaseAdmin
-              .from("trader_accounts")
-              .update({ current_phase: oldPhase } as never)
-              .eq("id", poolResult.accountId);
+           if (poolResult.ok) {
+             // 3. Set correct phase on new account
+             await supabaseAdmin
+               .from("trader_accounts")
+               .update({ current_phase: oldPhase } as never)
+               .eq("id", poolResult.accountId);
 
             // 4. In-app notification with credentials
             await supabaseAdmin
@@ -472,6 +473,7 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
         currency,
         challengeId: challengeId ?? "",
         userId: traderUserId,
+        phase: oldPhase,
         phaseProgression: true,
       });
 
@@ -624,6 +626,7 @@ export const approvePhase2Server = createServerFn({ method: "POST" })
         currency: (acc as any).currency ?? "NGN",
         challengeId: (acc as any).challenge_id,
         userId: (acc as any).user_id,
+        phase: 2,
         phaseProgression: true,
       });
 
@@ -765,6 +768,7 @@ export const approveFundedServer = createServerFn({ method: "POST" })
         currency: (acc as any).currency ?? "NGN",
         challengeId: (acc as any).challenge_id,
         userId: (acc as any).user_id,
+        phase: 3,
         phaseProgression: true,
       });
 

@@ -34,14 +34,20 @@ export const Route = createFileRoute("/api/admin/pool")({
             investor_password?: string;
             mt5_server?: string;
             account_size_ngn?: number;
+            account_size_usd?: number;
+            currency?: string;
+            phase?: number;
             notes?: string;
-            // archive
+            // archive / delete
             id?: string;
+            // bulk_add
+            accounts?: Array<{ mt5_login: string; mt5_password: string; investor_password: string; mt5_server?: string; account_size_ngn?: number; account_size_usd?: number; currency?: string; notes?: string }>;
           };
 
           if (body.action === "add") {
-            const { mt5_login, mt5_password, investor_password, mt5_server, account_size_ngn, account_size_usd, currency, notes } = body;
+            const { mt5_login, mt5_password, investor_password, mt5_server, account_size_ngn, account_size_usd, currency, phase, notes } = body;
             const poolCurrency = currency || "NGN";
+            const poolPhase = phase && [1, 2, 3].includes(phase) ? phase : 1;
             if (!mt5_login || !mt5_password || !investor_password) {
               return Response.json(
                 { error: "mt5_login, mt5_password, and investor_password are required" },
@@ -71,6 +77,7 @@ export const Route = createFileRoute("/api/admin/pool")({
                 account_size_ngn: poolCurrency === "USD" ? null : (account_size_ngn ?? null),
                 account_size_usd: poolCurrency === "USD" ? (account_size_usd ?? null) : null,
                 currency: poolCurrency,
+                phase: poolPhase,
                 notes: notes?.trim() ?? null,
               })
               .select("id")
@@ -78,6 +85,37 @@ export const Route = createFileRoute("/api/admin/pool")({
 
             if (error) return Response.json({ error: error.message }, { status: 500 });
             return Response.json({ ok: true, id: data.id });
+          }
+
+          if (body.action === "bulk_add") {
+            const { accounts, phase } = body;
+            const poolPhase = phase && [1, 2, 3].includes(phase) ? phase : 1;
+            if (!accounts || !Array.isArray(accounts) || accounts.length === 0) {
+              return Response.json({ error: "accounts array is required" }, { status: 400 });
+            }
+
+            const rows = accounts.map((a) => {
+              const currency = a.currency || "NGN";
+              return {
+                mt5_login: a.mt5_login.trim(),
+                mt5_password: a.mt5_password.trim(),
+                investor_password: a.investor_password.trim(),
+                mt5_server: (a.mt5_server ?? "Exness-MT5Trial9").trim(),
+                account_size_ngn: currency === "USD" ? null : (a.account_size_ngn ?? null),
+                account_size_usd: currency === "USD" ? (a.account_size_usd ?? null) : null,
+                currency,
+                phase: poolPhase,
+                notes: a.notes?.trim() ?? null,
+              };
+            });
+
+            const { data, error } = await supabaseAdmin
+              .from("account_pool")
+              .insert(rows)
+              .select("id");
+
+            if (error) return Response.json({ error: error.message }, { status: 500 });
+            return Response.json({ ok: true, count: data?.length ?? 0 });
           }
 
           if (body.action === "archive") {
@@ -138,20 +176,22 @@ export const Route = createFileRoute("/api/admin/pool")({
           const variant = url.searchParams.get("variant");
 
           if (variant === "stats") {
-            // Group available accounts by size (both NGN and USD)
+            // Group available accounts by size and phase
             const { data: available, error: availErr } = await supabaseAdmin
               .from("account_pool")
-              .select("account_size_ngn, account_size_usd, currency")
+              .select("account_size_ngn, account_size_usd, currency, phase")
               .eq("status", "available");
 
             if (availErr) return Response.json({ error: availErr.message }, { status: 500 });
 
-            const inventory: Record<string, number> = {};
+            // inventory[challengeKey][phase] = count
+            const inventory: Record<string, Record<number, number>> = {};
             for (const row of available ?? []) {
               const key = row.currency === "USD"
                 ? `usd_${row.account_size_usd}`
                 : `ngn_${row.account_size_ngn}`;
-              inventory[key] = (inventory[key] ?? 0) + 1;
+              if (!inventory[key]) inventory[key] = {};
+              inventory[key][row.phase] = (inventory[key][row.phase] ?? 0) + 1;
             }
 
             // All pool rows for the table view

@@ -58,21 +58,24 @@ export async function claimPoolAccount(args: {
   currency: string;
   challengeId: string;
   userId: string;
+  phase?: number;
   phaseProgression?: boolean;
 }): Promise<{ ok: true; accountId: string; mt5Login: string; mt5Password: string; mt5Server: string } | { ok: false; error: string }> {
   let lastError = "No accounts available for this size. Admin has been notified.";
   const isUsd = args.currency === "USD";
   const accountSize = isUsd ? args.accountSizeUsd! : args.accountSizeNgn;
   const sizeKey = isUsd ? "account_size_usd" : "account_size_ngn";
+  const phase = args.phase ?? 1;
 
   for (let attempt = 1; attempt <= MAX_CLAIM_RETRIES; attempt++) {
-    // 1. Find oldest available account for this size and currency
+    // 1. Find oldest available account for this size, currency, and phase
     const { data: poolRows, error: poolErr } = await supabaseAdmin
       .from("account_pool")
       .select("*")
       .eq("status", "available")
       .eq("currency", args.currency)
       .eq(sizeKey, accountSize)
+      .eq("phase", phase)
       .order("created_at", { ascending: true })
       .limit(1);
 
@@ -85,7 +88,8 @@ export async function claimPoolAccount(args: {
     if (!poolRow) {
       if (attempt === 1) {
         const sizeLabel = isUsd ? `$${accountSize.toLocaleString("en-US")}` : `₦${accountSize.toLocaleString("en-NG")}`;
-        const msg = `No ${sizeLabel} ${args.currency} account in pool for order ${args.orderId.slice(0, 8)}…`;
+        const phaseLabel = phase === 1 ? "Phase 1" : phase === 2 ? "Phase 2" : "Funded";
+        const msg = `No ${sizeLabel} ${args.currency} ${phaseLabel} account in pool for order ${args.orderId.slice(0, 8)}…`;
         await notifyAdmins("⚠️ Account Pool Empty", msg);
         await sendAdminEmail(
           "Account Pool Empty — Manual Delivery Needed",
@@ -134,7 +138,7 @@ export async function claimPoolAccount(args: {
         currency: args.currency,
         starting_balance: accountSize,
         current_equity: accountSize,
-        current_phase: 1,
+        current_phase: phase,
         status: "active",
       })
       .select("id")
@@ -199,20 +203,22 @@ export async function claimPoolAccount(args: {
         });
     }
 
-    // 5b. Check if stock is low for this size
+    // 5b. Check if stock is low for this size and phase
     const { count: remaining } = await supabaseAdmin
       .from("account_pool")
       .select("id", { count: "exact", head: true })
       .eq("status", "available")
       .eq("currency", args.currency)
-      .eq(sizeKey, accountSize);
+      .eq(sizeKey, accountSize)
+      .eq("phase", phase);
 
     if (remaining !== null && remaining <= 2) {
       const sizeLabel = isUsd ? `$${accountSize.toLocaleString("en-US")}` : `₦${accountSize.toLocaleString("en-NG")}`;
-      const lowMsg = `Only ${remaining} account(s) left for size ${sizeLabel}.`;
+      const phaseLabel = phase === 1 ? "Phase 1" : phase === 2 ? "Phase 2" : "Funded";
+      const lowMsg = `Only ${remaining} ${phaseLabel} account(s) left for size ${sizeLabel}.`;
       await notifyAdmins("⚠️ Account Pool Running Low", lowMsg);
       await sendAdminEmail(
-        `Low Stock: ${sizeLabel} (${remaining} left)`,
+        `Low Stock: ${phaseLabel} ${sizeLabel} (${remaining} left)`,
         `<h2>Pool Low Stock</h2><p>${lowMsg}</p><p><a href="${process.env.SITE ?? "https://fundedng.fun"}/admin">Go to Admin →</a></p>`,
       );
     }

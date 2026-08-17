@@ -26,6 +26,7 @@ async function attemptDelivery(orderId: string, userId: string, challengeId: str
     currency: challenge.currency ?? "NGN",
     challengeId: challenge.id,
     userId,
+    phase: 1,
   }).catch(() => null);
 
   const { data: prof } = await supabaseAdmin

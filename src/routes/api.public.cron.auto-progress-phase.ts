@@ -186,6 +186,7 @@ async function handleAutoProgress(request: Request) {
           currency: account.currency ?? "NGN",
           challengeId: account.challenge_id,
           userId: account.user_id,
+          phase: 2,
           phaseProgression: true,
         });
 
@@ -275,6 +276,7 @@ async function handleAutoProgress(request: Request) {
           currency: account.currency ?? "NGN",
           challengeId: account.challenge_id,
           userId: account.user_id,
+          phase: 3,
           phaseProgression: true,
         });
 

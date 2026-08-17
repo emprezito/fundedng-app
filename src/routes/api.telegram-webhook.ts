@@ -150,6 +150,7 @@ export const Route = createFileRoute("/api/telegram-webhook")({
                 currency,
                 challengeId: challengeId ?? "",
                 userId: traderUserId,
+                phase: oldPhase,
                 phaseProgression: true,
               });
 
@@ -346,6 +347,7 @@ export const Route = createFileRoute("/api/telegram-webhook")({
                 currency: (acc as any).currency ?? "NGN",
                 challengeId: (acc as any).challenge_id,
                 userId: (acc as any).user_id,
+                phase: 2,
                 phaseProgression: true,
               });
 
@@ -475,6 +477,7 @@ export const Route = createFileRoute("/api/telegram-webhook")({
                 currency: (acc as any).currency ?? "NGN",
                 challengeId: (acc as any).challenge_id,
                 userId: (acc as any).user_id,
+                phase: 3,
                 phaseProgression: true,
               });
 

@@ -164,15 +164,16 @@ export const Route = createFileRoute("/api/verify-payment")({
              await supabaseAdmin.rpc("increment_discount_redemption" as never, { _code: discountCode } as never);
            }
 
-           // ---- 7. Try to deliver from pool automatically ----
-           const poolResult = await claimPoolAccount({
-             orderId: order.id,
-             accountSizeNgn: orderCurrency === "USD" ? 0 : challenge.account_size,
-             accountSizeUsd: orderCurrency === "USD" ? challenge.account_size : undefined,
-             currency: orderCurrency,
-             challengeId: challenge.id,
-             userId,
-           }).catch((e) => {
+            // ---- 7. Try to deliver from pool automatically ----
+            const poolResult = await claimPoolAccount({
+              orderId: order.id,
+              accountSizeNgn: orderCurrency === "USD" ? 0 : challenge.account_size,
+              accountSizeUsd: orderCurrency === "USD" ? challenge.account_size : undefined,
+              currency: orderCurrency,
+              challengeId: challenge.id,
+              userId,
+              phase: 1,
+            }).catch((e) => {
              console.error("[verify-payment] claimPoolAccount threw", e);
              return null;
            });

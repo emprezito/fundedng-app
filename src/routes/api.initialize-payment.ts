@@ -163,6 +163,7 @@ export const Route = createFileRoute("/api/initialize-payment")({
               currency: orderCurrency,
               challengeId: challenge.id,
               userId: user.id,
+              phase: 1,
             }).catch((e) => {
               console.error("[initialize-payment] claimPoolAccount threw", e);
               return null;

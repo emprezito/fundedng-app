@@ -83,6 +83,7 @@ export const Route = createFileRoute("/api/squad-webhook")({
             currency: challenge.currency ?? "NGN",
             challengeId: challenge.id,
             userId: order.user_id,
+            phase: 1,
           }).catch((e) => {
             console.error("[squad-webhook] claimPoolAccount threw", e);
             return null;
