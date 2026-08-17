@@ -654,7 +654,7 @@ function useAdminDataHook() {
     const accountSize = Number(deliverPartnerFreeFor.challenges?.account_size ?? deliverPartnerFreeFor.account_size ?? 1000000);
     const { error } = await (supabase as any).from("partner_free_accounts").update({ status: "fulfilled", mt5_login: partnerFreeForm.login.trim(), mt5_password: partnerFreeForm.password.trim(), investor_password: partnerFreeForm.investor.trim() || null, mt5_server: partnerFreeForm.server.trim(), fulfilled_at: new Date().toISOString() }).eq("id", deliverPartnerFreeFor.id);
     if (error) { setDeliveringPartnerFree(false); return toast.error(error.message); }
-    const { error: taError } = await (supabase as any).from("trader_accounts").insert({ user_id: deliverPartnerFreeFor.partner_id, challenge_id, order_id: null, mt5_login: partnerFreeForm.login.trim(), mt5_password: partnerFreeForm.password.trim(), investor_password: partnerFreeForm.investor.trim() || null, mt5_server: partnerFreeForm.server.trim(), starting_balance: accountSize, current_equity: accountSize, current_phase: 1, status: "active" });
+    const { error: taError } = await (supabase as any).from("trader_accounts").insert({ user_id: deliverPartnerFreeFor.partner_id, challenge_id, order_id: null, mt5_login: partnerFreeForm.login.trim(), mt5_password: partnerFreeForm.password.trim(), investor_password: partnerFreeForm.investor.trim() || null, mt5_server: partnerFreeForm.server.trim(), starting_balance: accountSize, current_equity: accountSize, current_phase: 1, status: "active", provider: "exness-bot" });
     setDeliveringPartnerFree(false);
     if (taError) return toast.error(taError.message);
     const chName = deliverPartnerFreeFor.challenges?.name ?? "Partner";

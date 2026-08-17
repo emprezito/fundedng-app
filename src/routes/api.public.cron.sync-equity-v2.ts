@@ -31,7 +31,7 @@ async function refreshTradingDays(accountId: string) {
 
     const { data: closeData } = await supabaseAdmin
       .from("closed_trades")
-      .select("close_time, profit")
+      .select("close_time, profit, symbol, open_time, ticket")
       .eq("account_id", accountId)
       .gte("close_time", phaseStart)
       .order("close_time", { ascending: true });
@@ -60,6 +60,44 @@ async function refreshTradingDays(accountId: string) {
       }
     } else {
       profitableDays = dayMap.size;
+    }
+
+    // Server-side concurrent position check (3+ simultaneous positions on same symbol = breach)
+    if (closeData && closeData.length >= 3) {
+      const bySymbol = new Map<string, Array<{ open_time: string; close_time: string; ticket: number }>>();
+      for (const t of closeData) {
+        if (!t.symbol || !t.open_time || !t.close_time) continue;
+        if (!bySymbol.has(t.symbol)) bySymbol.set(t.symbol, []);
+        bySymbol.get(t.symbol)!.push({ open_time: t.open_time, close_time: t.close_time, ticket: t.ticket });
+      }
+      for (const [symbol, trades] of bySymbol) {
+        if (trades.length < 3) continue;
+        trades.sort((a, b) => new Date(a.open_time).getTime() - new Date(b.open_time).getTime());
+        for (let i = 0; i < trades.length; i++) {
+          const current = trades[i];
+          const currentOpen = new Date(current.open_time).getTime();
+          const currentClose = new Date(current.close_time).getTime();
+          const concurrent: number[] = [current.ticket];
+          for (let j = i + 1; j < trades.length; j++) {
+            const other = trades[j];
+            const otherOpen = new Date(other.open_time).getTime();
+            if (otherOpen < currentClose) {
+              concurrent.push(other.ticket);
+            }
+          }
+          if (concurrent.length >= 3) {
+            const breachReason = `Position stacking violation (server-side): ${concurrent.length} simultaneous positions detected on ${symbol} (tickets #${concurrent.join(", #")}). Maximum 2 open positions per symbol per account — instant breach.`;
+            await supabaseAdmin.from("trader_accounts").update({ status: "breached", breach_reason: breachReason }).eq("id", accountId);
+            const { data: acctInfo } = await supabaseAdmin.from("trader_accounts").select("user_id, mt5_login").eq("id", accountId).single();
+            if (acctInfo) {
+              await supabaseAdmin.from("notifications").insert({ user_id: acctInfo.user_id, title: "⚠️ Account Breached — Position Violation", message: `You had ${concurrent.length} positions open on ${symbol} at the same time (max 2 per symbol). The account has been breached.`, type: "breach" });
+              try { await sendEventEmail({ type: "breached", accountId, reason: breachReason }); } catch {}
+              try { await supabaseAdmin.rpc("send_telegram" as never, { p_message: `🚫 <b>Position Violation Breach (Server-Side)</b>\nAccount: ${acctInfo.mt5_login ?? accountId}\nReason: ${breachReason}\n👉 <a href="https://app.fundedng.com/admin">Open Admin Panel</a>` } as never); } catch {}
+            }
+            return;
+          }
+        }
+      }
     }
 
     const { error: updateErr } = await supabaseAdmin

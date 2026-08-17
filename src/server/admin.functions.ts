@@ -865,6 +865,178 @@ export const approveFundedServer = createServerFn({ method: "POST" })
   });
 
 // ---------------------------------------------------------------------------
+// Trader self-service: Request Phase 2 + auto-provision from pool
+// ---------------------------------------------------------------------------
+const RequestPhase2AutoInput = z.object({
+  accessToken: z.string().min(1),
+  accountId: z.string().uuid(),
+});
+
+export const requestPhase2AutoProvisionServer = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => RequestPhase2AutoInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const auth = await assertUser(data.accessToken);
+      if (!auth.ok) return auth;
+
+      const { data: acc } = await supabaseAdmin
+        .from("trader_accounts")
+        .select("id, user_id, starting_balance, currency, challenge_id, order_id, current_phase, status, trading_days, challenges(min_trading_days, profit_target_percent, max_drawdown_percent, max_daily_drawdown_percent, phases)")
+        .eq("id", data.accountId)
+        .maybeSingle();
+
+      if (!acc) return { ok: false as const, error: "Account not found" };
+      if ((acc as any).user_id !== auth.userId) return { ok: false as const, error: "Not your account" };
+      if ((acc as any).status !== "active") return { ok: false as const, error: "Account is not active" };
+      if ((acc as any).current_phase !== 1) return { ok: false as const, error: "Not in Phase 1" };
+
+      const challenge = (acc as any).challenges;
+      if (!challenge) return { ok: false as const, error: "Challenge not found" };
+
+      const minDays = (acc as any).currency === "USD" ? 5 : (challenge.min_trading_days ?? 3);
+      if (((acc as any).trading_days ?? 0) < minDays) return { ok: false as const, error: `Minimum ${minDays} trading days required` };
+
+      const isUsd = (acc as any).currency === "USD";
+      const startingBalance = Number((acc as any).starting_balance);
+
+      const poolResult = await claimPoolAccount({
+        orderId: (acc as any).order_id,
+        accountSizeNgn: isUsd ? 0 : startingBalance,
+        accountSizeUsd: isUsd ? startingBalance : undefined,
+        currency: (acc as any).currency ?? "NGN",
+        challengeId: (acc as any).challenge_id,
+        userId: (acc as any).user_id,
+        phase: 2,
+        phaseProgression: true,
+      });
+
+      if (!poolResult.ok) {
+        await supabaseAdmin.rpc("request_phase2" as never, { _account_id: data.accountId } as never);
+        return { ok: false as const, error: `Pool unavailable, request sent to admin: ${poolResult.error}`, fallback: true };
+      }
+
+      await supabaseAdmin.from("trader_accounts").update({
+        status: "passed",
+        phase1_passed_at: new Date().toISOString(),
+        phase2_requested_at: null,
+      } as never).eq("id", data.accountId);
+
+      await supabaseAdmin.from("trader_accounts").update({
+        current_phase: 2,
+        trading_days: 0,
+      } as never).eq("id", poolResult.accountId);
+
+      await supabaseAdmin.from("notifications").insert({
+        user_id: (acc as any).user_id,
+        title: "🎯 Phase 1 Passed — New Account Provisioned",
+        message: `Congratulations — you passed Phase 1! Your Phase 2 account is ready. New Login: ${poolResult.mt5Login} · Server: ${poolResult.mt5Server}. Starting balance: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}. Good luck!`,
+        type: "success",
+      } as never);
+
+      await sendEventEmail({ type: "phase1_passed", accountId: poolResult.accountId }).catch(() => {});
+
+      await supabaseAdmin.rpc("send_telegram" as never, {
+        p_message: `🎯 <b>Phase 2 Auto-Provisioned</b>\nTrader: ${(acc as any).user_id}\nNew Login: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}\nSize: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}`,
+      } as never);
+
+      try { await sendPushToUser((acc as any).user_id, { title: "Phase 1 Passed!", body: `Your Phase 2 account is ready. Login: ${poolResult.mt5Login}` }); } catch {}
+
+      return { ok: true as const, newAccountId: poolResult.accountId };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Request failed";
+      console.error("[requestPhase2AutoProvisionServer] unexpected", msg);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Trader self-service: Request Funded + auto-provision from pool
+// ---------------------------------------------------------------------------
+const RequestFundedAutoInput = z.object({
+  accessToken: z.string().min(1),
+  accountId: z.string().uuid(),
+});
+
+export const requestFundedAutoProvisionServer = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => RequestFundedAutoInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const auth = await assertUser(data.accessToken);
+      if (!auth.ok) return auth;
+
+      const { data: acc } = await supabaseAdmin
+        .from("trader_accounts")
+        .select("id, user_id, starting_balance, currency, challenge_id, order_id, current_phase, status, trading_days, challenges(min_trading_days, profit_target_percent, phases)")
+        .eq("id", data.accountId)
+        .maybeSingle();
+
+      if (!acc) return { ok: false as const, error: "Account not found" };
+      if ((acc as any).user_id !== auth.userId) return { ok: false as const, error: "Not your account" };
+      if ((acc as any).status !== "active") return { ok: false as const, error: "Account is not active" };
+      if ((acc as any).current_phase < 2) return { ok: false as const, error: "Not yet in Phase 2" };
+
+      const challenge = (acc as any).challenges;
+      if (!challenge) return { ok: false as const, error: "Challenge not found" };
+
+      const minDays = (acc as any).currency === "USD" ? 5 : (challenge.min_trading_days ?? 3);
+      if (((acc as any).trading_days ?? 0) < minDays) return { ok: false as const, error: `Minimum ${minDays} trading days required` };
+
+      const isUsd = (acc as any).currency === "USD";
+      const startingBalance = Number((acc as any).starting_balance);
+
+      const poolResult = await claimPoolAccount({
+        orderId: (acc as any).order_id,
+        accountSizeNgn: isUsd ? 0 : startingBalance,
+        accountSizeUsd: isUsd ? startingBalance : undefined,
+        currency: (acc as any).currency ?? "NGN",
+        challengeId: (acc as any).challenge_id,
+        userId: (acc as any).user_id,
+        phase: 3,
+        phaseProgression: true,
+      });
+
+      if (!poolResult.ok) {
+        await supabaseAdmin.rpc("request_funded" as never, { _account_id: data.accountId } as never);
+        return { ok: false as const, error: `Pool unavailable, request sent to admin: ${poolResult.error}`, fallback: true };
+      }
+
+      await supabaseAdmin.from("trader_accounts").update({
+        status: "passed",
+        phase2_passed_at: new Date().toISOString(),
+        funded_requested_at: null,
+      } as never).eq("id", data.accountId);
+
+      await supabaseAdmin.from("trader_accounts").update({
+        status: "funded",
+        current_phase: 3,
+        funded_at: new Date().toISOString(),
+        trading_days: 0,
+      } as never).eq("id", poolResult.accountId);
+
+      await supabaseAdmin.from("notifications").insert({
+        user_id: (acc as any).user_id,
+        title: "🏆 You're Funded — New Account Provisioned",
+        message: `Congratulations — you are now a funded trader! Your funded account is ready. Login: ${poolResult.mt5Login} · Server: ${poolResult.mt5Server}. Start trading and request your first payout!`,
+        type: "success",
+      } as never);
+
+      await sendEventEmail({ type: "funded", accountId: poolResult.accountId }).catch(() => {});
+
+      await supabaseAdmin.rpc("send_telegram" as never, {
+        p_message: `🏆 <b>Trader Funded (Auto-Provisioned)</b>\nUser: ${(acc as any).user_id}\nNew Login: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}\nSize: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}`,
+      } as never);
+
+      try { await sendPushToUser((acc as any).user_id, { title: "You're Funded!", body: `Your funded account is ready. Login: ${poolResult.mt5Login}` }); } catch {}
+
+      return { ok: true as const, newAccountId: poolResult.accountId };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Request failed";
+      console.error("[requestFundedAutoProvisionServer] unexpected", msg);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+// ---------------------------------------------------------------------------
 // Mark account as breached
 // ---------------------------------------------------------------------------
 const MarkBreachedInput = z.object({

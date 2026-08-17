@@ -162,7 +162,10 @@ function BuyPage() {
   }, [currency]);
 
   useEffect(() => {
-    if (profile?.partner_referred_by) setPartnerCode("attached");
+    if (!profile?.partner_referred_by) return;
+    supabase.from("partner_profiles").select("promo_code").eq("user_id", profile.partner_referred_by).eq("is_active", true).maybeSingle().then(({ data }) => {
+      if (data?.promo_code) setPartnerCode(data.promo_code);
+    });
   }, [profile?.partner_referred_by]);
 
   const effectivePlanType: "standard" | "instant" =

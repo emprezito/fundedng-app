@@ -22,7 +22,7 @@ import { TradingAnalytics } from "@/components/dashboard/TradingAnalytics";
 import { LeaderboardActivityBanner } from "@/components/dashboard/LeaderboardActivityBanner";
 import { RefreshButton } from "@/components/ui/refresh-button";
 import { listNigerianBanks, verifyKycPaystack } from "@/server/kyc.functions";
-import { requestPayoutServer, sendPhaseRequestNotificationServer } from "@/server/admin.functions";
+import { requestPayoutServer, sendPhaseRequestNotificationServer, requestPhase2AutoProvisionServer, requestFundedAutoProvisionServer } from "@/server/admin.functions";
 import { notifyEmail } from "@/lib/notify-email";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -1280,22 +1280,19 @@ function DashboardPage() {
       setBlockedOpen(true);
       return;
     }
-    const { error } = await supabase.rpc("request_phase2", { _account_id: selected.id });
-    if (error) return toast.error(error.message);
-    await supabase.from("trader_accounts").update({ phase_rejected_reason: null, phase_rejected_at: null } as never).eq("id", selected.id);
-
+    setSubmitting(true);
     const { data: sess } = await supabase.auth.getSession();
-    if (sess.session?.access_token) {
-      await sendPhaseRequestNotificationServer({
-        data: {
-          accessToken: sess.session.access_token,
-          accountId: selected.id,
-          phase: "phase2",
-        },
-      }).catch(() => {});
+    if (!sess.session?.access_token) { setSubmitting(false); return toast.error("Please sign in again."); }
+    const result = await requestPhase2AutoProvisionServer({ data: { accessToken: sess.session.access_token, accountId: selected.id } });
+    setSubmitting(false);
+    if (result?.fallback) {
+      await sendPhaseRequestNotificationServer({ data: { accessToken: sess.session.access_token, accountId: selected.id, phase: "phase2" } }).catch(() => {});
+      toast.success("Pool unavailable. Phase 2 request sent to admin for approval.");
+    } else if (result?.error) {
+      toast.error(result.error);
+    } else {
+      toast.success("Phase 1 passed! Your Phase 2 account has been provisioned.");
     }
-
-    toast.success("Phase 2 approval requested. An admin will review shortly.");
     load();
   };
 
@@ -1308,22 +1305,19 @@ function DashboardPage() {
       setBlockedOpen(true);
       return;
     }
-    const { error } = await supabase.rpc("request_funded", { _account_id: selected.id });
-    if (error) return toast.error(error.message);
-    await supabase.from("trader_accounts").update({ phase_rejected_reason: null, phase_rejected_at: null } as never).eq("id", selected.id);
-
+    setSubmitting(true);
     const { data: sess } = await supabase.auth.getSession();
-    if (sess.session?.access_token) {
-      await sendPhaseRequestNotificationServer({
-        data: {
-          accessToken: sess.session.access_token,
-          accountId: selected.id,
-          phase: "funded",
-        },
-      }).catch(() => {});
+    if (!sess.session?.access_token) { setSubmitting(false); return toast.error("Please sign in again."); }
+    const result = await requestFundedAutoProvisionServer({ data: { accessToken: sess.session.access_token, accountId: selected.id } });
+    setSubmitting(false);
+    if (result?.fallback) {
+      await sendPhaseRequestNotificationServer({ data: { accessToken: sess.session.access_token, accountId: selected.id, phase: "funded" } }).catch(() => {});
+      toast.success("Pool unavailable. Funded request sent to admin for approval.");
+    } else if (result?.error) {
+      toast.error(result.error);
+    } else {
+      toast.success("Phase 2 passed! Your funded account has been provisioned.");
     }
-
-    toast.success("Funded approval requested. An admin will review shortly.");
     load();
   };
 
