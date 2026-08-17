@@ -62,10 +62,18 @@ async function refreshTradingDays(accountId: string) {
       profitableDays = dayMap.size;
     }
 
-    // Server-side concurrent position check (3+ simultaneous positions on same symbol = breach)
-    if (closeData && closeData.length >= 3) {
+    // Server-side concurrent position check — only check trades reported in the last 24 hours
+    // to prevent retroactive breaches for historical violations the EA didn't catch
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentTrades } = await supabaseAdmin
+      .from("closed_trades")
+      .select("symbol, open_time, close_time, ticket")
+      .eq("account_id", accountId)
+      .gte("created_at", oneDayAgo);
+
+    if (recentTrades && recentTrades.length >= 3) {
       const bySymbol = new Map<string, Array<{ open_time: string; close_time: string; ticket: number }>>();
-      for (const t of closeData) {
+      for (const t of recentTrades) {
         if (!t.symbol || !t.open_time || !t.close_time) continue;
         if (!bySymbol.has(t.symbol)) bySymbol.set(t.symbol, []);
         bySymbol.get(t.symbol)!.push({ open_time: t.open_time, close_time: t.close_time, ticket: t.ticket });
