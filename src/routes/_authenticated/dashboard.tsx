@@ -755,6 +755,7 @@ function DashboardPage() {
   const [blockedType, setBlockedType] = useState<"phase2" | "funded">("phase2");
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
   const lastEquityRef = useRef<number | null>(null);
+  const expandedInitialRef = useRef(false);
   const selectedRef = useRef(selected);
 
   useEffect(() => {
@@ -797,12 +798,13 @@ function DashboardPage() {
     });
   }, [accounts]);
 
-  // Auto-expand first group if none expanded
+  // Auto-expand first group on initial load only
   useEffect(() => {
-    if (expandedGroupIds.size === 0 && challengeGroups.length > 0) {
+    if (!expandedInitialRef.current && challengeGroups.length > 0) {
+      expandedInitialRef.current = true;
       setExpandedGroupIds(new Set([challengeGroups[0].orderId]));
     }
-  }, [challengeGroups, expandedGroupIds.size]);
+  }, [challengeGroups]);
 
   const phaseSnapshots = useMemo(() => {
     const active = phaseInfo.find(p => p.key === selectedPhase);
