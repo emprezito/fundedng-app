@@ -59,6 +59,7 @@ import { Route as AdminAdminPayoutsRouteImport } from './routes/_admin/admin.pay
 import { Route as AdminAdminPartnersRouteImport } from './routes/_admin/admin.partners'
 import { Route as AdminAdminDiscountsRouteImport } from './routes/_admin/admin.discounts'
 import { Route as AdminAdminChallengesRouteImport } from './routes/_admin/admin.challenges'
+import { Route as AdminAdminAiContentRouteImport } from './routes/_admin/admin.ai-content'
 import { Route as AdminAdminAffiliateRouteImport } from './routes/_admin/admin.affiliate'
 import { Route as AdminAdminAccountsRouteImport } from './routes/_admin/admin.accounts'
 import { Route as ApiPublicCronSyncEquityV2RouteImport } from './routes/api.public.cron.sync-equity-v2'
@@ -321,6 +322,11 @@ const AdminAdminChallengesRoute = AdminAdminChallengesRouteImport.update({
   path: '/challenges',
   getParentRoute: () => AdminAdminRoute,
 } as any)
+const AdminAdminAiContentRoute = AdminAdminAiContentRouteImport.update({
+  id: '/ai-content',
+  path: '/ai-content',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
 const AdminAdminAffiliateRoute = AdminAdminAffiliateRouteImport.update({
   id: '/affiliate',
   path: '/affiliate',
@@ -420,6 +426,7 @@ export interface FileRoutesByFullPath {
   '/payment/callback': typeof PaymentCallbackRoute
   '/admin/accounts': typeof AdminAdminAccountsRoute
   '/admin/affiliate': typeof AdminAdminAffiliateRoute
+  '/admin/ai-content': typeof AdminAdminAiContentRoute
   '/admin/challenges': typeof AdminAdminChallengesRoute
   '/admin/discounts': typeof AdminAdminDiscountsRoute
   '/admin/partners': typeof AdminAdminPartnersRoute
@@ -479,6 +486,7 @@ export interface FileRoutesByTo {
   '/payment/callback': typeof PaymentCallbackRoute
   '/admin/accounts': typeof AdminAdminAccountsRoute
   '/admin/affiliate': typeof AdminAdminAffiliateRoute
+  '/admin/ai-content': typeof AdminAdminAiContentRoute
   '/admin/challenges': typeof AdminAdminChallengesRoute
   '/admin/discounts': typeof AdminAdminDiscountsRoute
   '/admin/partners': typeof AdminAdminPartnersRoute
@@ -543,6 +551,7 @@ export interface FileRoutesById {
   '/payment/callback': typeof PaymentCallbackRoute
   '/_admin/admin/accounts': typeof AdminAdminAccountsRoute
   '/_admin/admin/affiliate': typeof AdminAdminAffiliateRoute
+  '/_admin/admin/ai-content': typeof AdminAdminAiContentRoute
   '/_admin/admin/challenges': typeof AdminAdminChallengesRoute
   '/_admin/admin/discounts': typeof AdminAdminDiscountsRoute
   '/_admin/admin/partners': typeof AdminAdminPartnersRoute
@@ -606,6 +615,7 @@ export interface FileRouteTypes {
     | '/payment/callback'
     | '/admin/accounts'
     | '/admin/affiliate'
+    | '/admin/ai-content'
     | '/admin/challenges'
     | '/admin/discounts'
     | '/admin/partners'
@@ -665,6 +675,7 @@ export interface FileRouteTypes {
     | '/payment/callback'
     | '/admin/accounts'
     | '/admin/affiliate'
+    | '/admin/ai-content'
     | '/admin/challenges'
     | '/admin/discounts'
     | '/admin/partners'
@@ -728,6 +739,7 @@ export interface FileRouteTypes {
     | '/payment/callback'
     | '/_admin/admin/accounts'
     | '/_admin/admin/affiliate'
+    | '/_admin/admin/ai-content'
     | '/_admin/admin/challenges'
     | '/_admin/admin/discounts'
     | '/_admin/admin/partners'
@@ -1149,6 +1161,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAdminChallengesRouteImport
       parentRoute: typeof AdminAdminRoute
     }
+    '/_admin/admin/ai-content': {
+      id: '/_admin/admin/ai-content'
+      path: '/ai-content'
+      fullPath: '/admin/ai-content'
+      preLoaderRoute: typeof AdminAdminAiContentRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
     '/_admin/admin/affiliate': {
       id: '/_admin/admin/affiliate'
       path: '/affiliate'
@@ -1232,6 +1251,7 @@ declare module '@tanstack/react-router' {
 interface AdminAdminRouteChildren {
   AdminAdminAccountsRoute: typeof AdminAdminAccountsRoute
   AdminAdminAffiliateRoute: typeof AdminAdminAffiliateRoute
+  AdminAdminAiContentRoute: typeof AdminAdminAiContentRoute
   AdminAdminChallengesRoute: typeof AdminAdminChallengesRoute
   AdminAdminDiscountsRoute: typeof AdminAdminDiscountsRoute
   AdminAdminPartnersRoute: typeof AdminAdminPartnersRoute
@@ -1247,6 +1267,7 @@ interface AdminAdminRouteChildren {
 const AdminAdminRouteChildren: AdminAdminRouteChildren = {
   AdminAdminAccountsRoute: AdminAdminAccountsRoute,
   AdminAdminAffiliateRoute: AdminAdminAffiliateRoute,
+  AdminAdminAiContentRoute: AdminAdminAiContentRoute,
   AdminAdminChallengesRoute: AdminAdminChallengesRoute,
   AdminAdminDiscountsRoute: AdminAdminDiscountsRoute,
   AdminAdminPartnersRoute: AdminAdminPartnersRoute,

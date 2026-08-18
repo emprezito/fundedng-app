@@ -3,7 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = "meta-llama/llama-4-scout";
+const MODEL = "openrouter/free";
 
 const GenerateContentInput = z.object({
   accessToken: z.string().min(1),
