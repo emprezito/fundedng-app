@@ -90,36 +90,38 @@ export const generateContentServer = createServerFn({ method: "POST" })
 
       const systemPrompt = `You are the social media manager for FundedNG, a prop trading firm based in Nigeria. You write engaging, authentic posts for X (formerly Twitter) that drive signups and build community.
 
-Rules:
+About FundedNG:
+- FundedNG is Nigeria's leading prop trading firm. Website: fundedng.fun
+- Traders get funded accounts (200k, 500k, 1M, 2M, 5M challenges available)
+- Key selling points: No trailing drawdown. No consistency rule. 24-hour payouts. Up to 90% profit split.
+- Traders trade on Exness MT5 with real capital
+- 2-phase challenge system: pass Phase 1 and Phase 2 to get funded
+- Payouts in Naira via bank transfer or USDT
+
+Rules for writing posts:
 - Write like a real person, not a corporate bot. Use casual, confident Nigerian-English tone where appropriate.
 - Keep each post under 280 characters for X (hard limit).
 - Use relevant hashtags sparingly (1-3 per post max).
-- Never make up specific trader names or amounts not in the data below.
-- Mix formats: some posts as questions, some as statements, some as threads-ready hooks.
-- Avoid emojis overload — 1-2 per post max.
-- Never use the word "leverage" incorrectly.
-- Focus on: results, education, community, platform features, motivation.
-- You can reference real platform statistics provided below.
-- Generate exactly 5 different posts, each offering a different angle or topic.
-- Return ONLY valid JSON array, no markdown fences, no explanation.`;
+- Never make up specific trader names or amounts not in the data provided.
+- Mix it up: some posts as questions to the audience, some as bold statements, some as calls-to-action, some as tips.
+- Avoid emoji overload — 1-2 per post max.
+- Prioritize promoting FundedNG's features, benefits, and why traders should join. Stats are supporting evidence, not the main content.
+- Every post should make someone want to visit fundedng.fun and sign up.
+- Generate exactly 5 different posts, each completely different in angle and tone.
+- Return ONLY a valid JSON array of strings, no markdown fences, no explanation.`;
 
-      const statsContext = `Current platform data (real):
+      const statsContext = `Real platform data (use as supporting evidence, not as the main content):
 - Total traders: ${stats.totalAccounts}
 - Active accounts: ${stats.active}
 - Funded accounts: ${stats.funded}
-- Passed accounts: ${stats.passed}
-- Breached accounts: ${stats.breached}
-- Pass rate: ${stats.passRate}%
-- Total payouts: ₦${stats.totalPaidNaira.toLocaleString()}
+- Total payouts paid: ₦${stats.totalPaidNaira.toLocaleString()}
 - Payouts this week: ₦${stats.weekPaidNaira.toLocaleString()}
-- Total revenue: ₦${stats.totalRevenue.toLocaleString()}
-- Revenue this month: ₦${stats.monthRevenue.toLocaleString()}
-- Recent payouts: ${stats.recentPayouts.map((p) => `₦${p.amount.toLocaleString()}`).join(", ") || "none yet"}
+- Pass rate: ${stats.passRate}%
 - Active challenges: ${stats.challenges.map((c) => `${c.name} (${c.currency} ${c.size?.toLocaleString()})`).join(", ")}`;
 
       const userPrompt = data.customPrompt
-        ? `Generate 5 X posts about FundedNG. Custom direction from admin: "${data.customPrompt}"\n\nPlatform data:\n${statsContext}`
-        : `Generate 5 engaging X posts for FundedNG using the platform data below. Each post should cover a different angle — results, trading tips, platform features, community engagement, or motivation. Make them feel authentic and conversion-focused.\n\n${statsContext}`;
+        ? `Generate 5 X posts for FundedNG. Custom direction from admin: "${data.customPrompt}"\n\nPlatform data:\n${statsContext}`
+        : `Generate 5 X posts for FundedNG. Mix these angles across the 5 posts:\n1. A call-to-action post promoting a specific FundedNG feature (no trailing drawdown, no consistency rule, 24hr payouts, or profit split)\n2. A question engaging the trading community\n3. A motivational or results-driven post using the platform stats\n4. A tip or educational post about prop trading\n5. A bold statement or hot take about why FundedNG is different\n\nMake them feel like a real trader talking to other traders. Drive traffic to fundedng.fun.\n\nPlatform data:\n${statsContext}`;
 
       const res = await fetch(OPENROUTER_URL, {
         method: "POST",
