@@ -6,7 +6,7 @@ INSERT INTO public.trader_accounts (
   user_id, challenge_id, order_id, mt5_login, mt5_password, investor_password,
   mt5_server, starting_balance, current_equity, current_phase, status, provider, created_at
 )
-SELECT
+SELECT DISTINCT ON (afa.id)
   afa.affiliate_id,
   ch.id AS challenge_id,
   NULL::uuid AS order_id,
@@ -29,4 +29,5 @@ WHERE afa.status = 'fulfilled'
     WHERE ta.user_id = afa.affiliate_id
       AND ta.mt5_login = afa.mt5_login
       AND ta.mt5_server = COALESCE(afa.mt5_server, 'Exness-MT5Demo')
-  );
+  )
+ORDER BY afa.id, ch.created_at DESC;
