@@ -92,6 +92,7 @@ async function syncEquity() {
         .from("trader_accounts")
         .update({
           last_synced_at: new Date().toISOString(),
+          current_equity: info.equity,
           peak_equity: peak,
           trading_days: isNewDay
             ? (acct.trading_days ?? 0) + 1
