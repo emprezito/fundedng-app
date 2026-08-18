@@ -700,10 +700,15 @@ function useAdminDataHook() {
     if (!deliverClaimFor) return;
     if (!claimForm.login.trim() || !claimForm.password.trim() || !claimForm.server.trim()) { return toast.error("Login, password and server are required"); }
     setDeliveringClaim(true);
+    const accountSize = Number(deliverClaimFor.account_size ?? 200000);
+    const { data: chMatch } = await supabase.from("challenges").select("id").eq("account_size", accountSize).limit(1).maybeSingle();
+    if (!chMatch) { setDeliveringClaim(false); return toast.error("No matching challenge found for this account size."); }
     const { error } = await supabase.from("affiliate_free_accounts").update({ status: "fulfilled", mt5_login: claimForm.login.trim(), mt5_password: claimForm.password.trim(), investor_password: claimForm.investor.trim() || null, mt5_server: claimForm.server.trim(), fulfilled_at: new Date().toISOString() } as never).eq("id", deliverClaimFor.id);
+    if (error) { setDeliveringClaim(false); return toast.error(error.message); }
+    const { error: taError } = await (supabase as any).from("trader_accounts").insert({ user_id: deliverClaimFor.affiliate_id, challenge_id: chMatch.id, order_id: null, mt5_login: claimForm.login.trim(), mt5_password: claimForm.password.trim(), investor_password: claimForm.investor.trim() || null, mt5_server: claimForm.server.trim(), starting_balance: accountSize, current_equity: accountSize, current_phase: 1, status: "active", provider: "exness-bot" });
     setDeliveringClaim(false);
-    if (error) return toast.error(error.message);
-    toast.success(`Delivered free account: login ${claimForm.login}`); setDeliverClaimFor(null); loadAffiliate();
+    if (taError) return toast.error(taError.message);
+    toast.success(`Delivered free account: login ${claimForm.login}`); setDeliverClaimFor(null); loadAffiliate(); load();
   };
 
   const saveTelegram = async () => {
