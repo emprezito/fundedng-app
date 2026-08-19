@@ -87,6 +87,7 @@ function AccountsPage() {
 
   const tabs = [
     { id: "all", label: "All" },
+    { id: "active", label: "Active" },
     { id: "phase1", label: "Phase 1" },
     { id: "phase2", label: "Phase 2" },
     { id: "funded", label: "Funded" },
@@ -143,6 +144,7 @@ function AccountsPage() {
       </div>
       <Input placeholder="Search by MT5 login or trader name…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="h-9 w-full max-w-md" />
       {accounts.filter((a) => {
+        if (activeTab === "active") return a.status === "active";
         if (activeTab === "phase1") return a.current_phase === 1 && a.status === "active";
         if (activeTab === "phase2") return a.current_phase === 2 && a.status === "active";
         if (activeTab === "funded") return a.status === "funded";
