@@ -134,7 +134,7 @@ function AIContentPage() {
                   </Button>
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                  <span className="text-xs text-muted-foreground">{post.length} / 280 chars</span>
+                  <span className="text-xs text-muted-foreground">{post.length} characters</span>
                   <Button variant="ghost" size="sm" onClick={() => copyPost(post, i)}>
                     {copiedIdx === i ? "Copied!" : "Copy to clipboard"}
                   </Button>

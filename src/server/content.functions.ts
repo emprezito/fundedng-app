@@ -100,13 +100,13 @@ About FundedNG:
 
 Rules for writing posts:
 - Write like a real person, not a corporate bot. Use casual, confident Nigerian-English tone where appropriate.
-- Keep each post under 280 characters for X (hard limit).
 - Use relevant hashtags sparingly (1-3 per post max).
 - Never make up specific trader names or amounts not in the data provided.
 - Mix it up: some posts as questions to the audience, some as bold statements, some as calls-to-action, some as tips.
 - Avoid emoji overload — 1-2 per post max.
 - Prioritize promoting FundedNG's features, benefits, and why traders should join. Stats are supporting evidence, not the main content.
 - Every post should make someone want to visit fundedng.fun and sign up.
+- Write substantial, detailed posts — no character limit. Write as much as needed to make the post compelling.
 - Generate exactly 5 different posts, each completely different in angle and tone.
 - Return ONLY a valid JSON array of strings, no markdown fences, no explanation.`;
 
@@ -136,7 +136,7 @@ Rules for writing posts:
             { role: "user", content: userPrompt },
           ],
           temperature: 0.9,
-          max_tokens: 1024,
+          max_tokens: 2048,
         }),
       });
 
