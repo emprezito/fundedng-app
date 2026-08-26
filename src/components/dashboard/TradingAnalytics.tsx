@@ -161,6 +161,12 @@ function RuleChecklist({ status, profitPct, target, ddPct, maxDD, daysTraded, mi
       passed: profitPct >= target,
       warn: profitPct > 0 && profitPct < target,
     },
+    {
+      label: "No position stacking (max 2 per symbol)",
+      description: "3+ simultaneous positions on the same symbol = automatic breach",
+      passed: true,
+      warn: false,
+    },
   ];
 
   return (

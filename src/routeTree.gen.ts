@@ -70,6 +70,7 @@ import { Route as ApiPublicCronHandleWeekendViolationRouteImport } from './route
 import { Route as ApiPublicCronHandleScalpingRouteImport } from './routes/api.public.cron.handle-scalping'
 import { Route as ApiPublicCronHandlePositionsViolationRouteImport } from './routes/api.public.cron.handle-positions-violation'
 import { Route as ApiPublicCronHandleNewsViolationRouteImport } from './routes/api.public.cron.handle-news-violation'
+import { Route as ApiPublicCronDailyContentRouteImport } from './routes/api.public.cron.daily-content'
 import { Route as ApiPublicCronAutoProgressPhaseRouteImport } from './routes/api.public.cron.auto-progress-phase'
 
 const RulesRoute = RulesRouteImport.update({
@@ -384,6 +385,12 @@ const ApiPublicCronHandleNewsViolationRoute =
     path: '/api/public/cron/handle-news-violation',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicCronDailyContentRoute =
+  ApiPublicCronDailyContentRouteImport.update({
+    id: '/api/public/cron/daily-content',
+    path: '/api/public/cron/daily-content',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicCronAutoProgressPhaseRoute =
   ApiPublicCronAutoProgressPhaseRouteImport.update({
     id: '/api/public/cron/auto-progress-phase',
@@ -444,6 +451,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminAdminIndexRoute
   '/community/': typeof AuthenticatedCommunityIndexRoute
   '/api/public/cron/auto-progress-phase': typeof ApiPublicCronAutoProgressPhaseRoute
+  '/api/public/cron/daily-content': typeof ApiPublicCronDailyContentRoute
   '/api/public/cron/handle-news-violation': typeof ApiPublicCronHandleNewsViolationRoute
   '/api/public/cron/handle-positions-violation': typeof ApiPublicCronHandlePositionsViolationRoute
   '/api/public/cron/handle-scalping': typeof ApiPublicCronHandleScalpingRoute
@@ -504,6 +512,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminAdminIndexRoute
   '/community': typeof AuthenticatedCommunityIndexRoute
   '/api/public/cron/auto-progress-phase': typeof ApiPublicCronAutoProgressPhaseRoute
+  '/api/public/cron/daily-content': typeof ApiPublicCronDailyContentRoute
   '/api/public/cron/handle-news-violation': typeof ApiPublicCronHandleNewsViolationRoute
   '/api/public/cron/handle-positions-violation': typeof ApiPublicCronHandlePositionsViolationRoute
   '/api/public/cron/handle-scalping': typeof ApiPublicCronHandleScalpingRoute
@@ -569,6 +578,7 @@ export interface FileRoutesById {
   '/_admin/admin/': typeof AdminAdminIndexRoute
   '/_authenticated/community/': typeof AuthenticatedCommunityIndexRoute
   '/api/public/cron/auto-progress-phase': typeof ApiPublicCronAutoProgressPhaseRoute
+  '/api/public/cron/daily-content': typeof ApiPublicCronDailyContentRoute
   '/api/public/cron/handle-news-violation': typeof ApiPublicCronHandleNewsViolationRoute
   '/api/public/cron/handle-positions-violation': typeof ApiPublicCronHandlePositionsViolationRoute
   '/api/public/cron/handle-scalping': typeof ApiPublicCronHandleScalpingRoute
@@ -633,6 +643,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/community/'
     | '/api/public/cron/auto-progress-phase'
+    | '/api/public/cron/daily-content'
     | '/api/public/cron/handle-news-violation'
     | '/api/public/cron/handle-positions-violation'
     | '/api/public/cron/handle-scalping'
@@ -693,6 +704,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/community'
     | '/api/public/cron/auto-progress-phase'
+    | '/api/public/cron/daily-content'
     | '/api/public/cron/handle-news-violation'
     | '/api/public/cron/handle-positions-violation'
     | '/api/public/cron/handle-scalping'
@@ -757,6 +769,7 @@ export interface FileRouteTypes {
     | '/_admin/admin/'
     | '/_authenticated/community/'
     | '/api/public/cron/auto-progress-phase'
+    | '/api/public/cron/daily-content'
     | '/api/public/cron/handle-news-violation'
     | '/api/public/cron/handle-positions-violation'
     | '/api/public/cron/handle-scalping'
@@ -799,6 +812,7 @@ export interface RootRouteChildren {
   ApiAdminSetExchangeRateRoute: typeof ApiAdminSetExchangeRateRoute
   ApiPublicPushEventRoute: typeof ApiPublicPushEventRoute
   ApiPublicCronAutoProgressPhaseRoute: typeof ApiPublicCronAutoProgressPhaseRoute
+  ApiPublicCronDailyContentRoute: typeof ApiPublicCronDailyContentRoute
   ApiPublicCronHandleNewsViolationRoute: typeof ApiPublicCronHandleNewsViolationRoute
   ApiPublicCronHandlePositionsViolationRoute: typeof ApiPublicCronHandlePositionsViolationRoute
   ApiPublicCronHandleScalpingRoute: typeof ApiPublicCronHandleScalpingRoute
@@ -1238,6 +1252,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronHandleNewsViolationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cron/daily-content': {
+      id: '/api/public/cron/daily-content'
+      path: '/api/public/cron/daily-content'
+      fullPath: '/api/public/cron/daily-content'
+      preLoaderRoute: typeof ApiPublicCronDailyContentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/auto-progress-phase': {
       id: '/api/public/cron/auto-progress-phase'
       path: '/api/public/cron/auto-progress-phase'
@@ -1366,6 +1387,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminSetExchangeRateRoute: ApiAdminSetExchangeRateRoute,
   ApiPublicPushEventRoute: ApiPublicPushEventRoute,
   ApiPublicCronAutoProgressPhaseRoute: ApiPublicCronAutoProgressPhaseRoute,
+  ApiPublicCronDailyContentRoute: ApiPublicCronDailyContentRoute,
   ApiPublicCronHandleNewsViolationRoute: ApiPublicCronHandleNewsViolationRoute,
   ApiPublicCronHandlePositionsViolationRoute:
     ApiPublicCronHandlePositionsViolationRoute,
