@@ -6,14 +6,12 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { formatNaira, formatPercent, formatUSD, calculateBusinessDays, addBusinessDays } from "@/lib/utils";
 import { toast } from "sonner";
-import { LogOut, Plus, Trophy, TrendingUp, Activity, Bell, ShieldCheck, ShieldAlert, Landmark, Sparkles, Check, Clock, XCircle, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
+import { LogOut, Plus, Trophy, TrendingUp, Activity, Bell, ShieldCheck, ShieldAlert, Sparkles, Check, Clock, XCircle, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { CertificateCard, type Certificate } from "@/components/certificates/CertificateCard";
 import { subscribeToPush } from "@/lib/push";
 import { NewUserInstallPrompt } from "@/components/NewUserInstallPrompt";
@@ -21,10 +19,8 @@ import { PendingAccounts } from "@/components/dashboard/PendingAccounts";
 import { TradingAnalytics } from "@/components/dashboard/TradingAnalytics";
 import { LeaderboardActivityBanner } from "@/components/dashboard/LeaderboardActivityBanner";
 import { RefreshButton } from "@/components/ui/refresh-button";
-import { listNigerianBanks, verifyKycPaystack } from "@/server/kyc.functions";
 import { requestPayoutServer, sendPhaseRequestNotificationServer, requestPhase2AutoProvisionServer, requestFundedAutoProvisionServer } from "@/server/admin.functions";
 import { notifyEmail } from "@/lib/notify-email";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: DashboardPage });
 
@@ -359,7 +355,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
   };
 
   const requestPayout = async () => {
-    if (!bankAccountNumber) return toast.error("Add your bank account in the KYC card first.");
+    if (!bankAccountNumber) return toast.error("Add your bank account in the KYC card on your Profile page first.");
     if (!kycVerified) return toast.error("Bank account pending admin verification.");
     if (account.status !== "funded") return toast.error("Account must be funded.");
     const isUsdAccount = account.currency === "USD";
@@ -730,7 +726,7 @@ function ChallengeGroupCard({ group, isExpanded, onToggle, children }: {
 }
 
 function DashboardPage() {
-  const { user, profile, signOut, refresh } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [partnerFreeAccount, setPartnerFreeAccount] = useState<PartnerFreeAccount | null>(null);
   const [selected, setSelected] = useState<Account | null>(null);
@@ -740,15 +736,6 @@ function DashboardPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [bankAccountNumber, setBankAccountNumber] = useState("");
-  const [bankName, setBankName] = useState("");
-  const [bankAccountName, setBankAccountName] = useState("");
-  const [bankCode, setBankCode] = useState("");
-  const [banks, setBanks] = useState<{ name: string; code: string }[]>([]);
-  const [kycVerified, setKycVerified] = useState(!!profile?.kyc_verified);
-  const [verifyingKyc, setVerifyingKyc] = useState(false);
-  const [kycDocUploading, setKycDocUploading] = useState(false);
-  const [kycDocFile, setKycDocFile] = useState<File | null>(null);
   const [liveStatus, setLiveStatus] = useState<'connecting' | 'live' | 'disconnected'>('connecting');
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [blockedReasons, setBlockedReasons] = useState<{ reason: string; current: string; required: string }[]>([]);
@@ -815,18 +802,6 @@ function DashboardPage() {
     });
   }, [snapshots, phaseInfo, selectedPhase]);
 
-  useEffect(() => {
-    setBankAccountNumber(profile?.bank_account_number ?? "");
-    setBankName(profile?.bank_name ?? "");
-    setBankAccountName(profile?.bank_account_name ?? "");
-  }, [profile]);
-
-  useEffect(() => {
-    listNigerianBanks().then((res) => {
-      if (res.ok && Array.isArray(res.banks)) setBanks(res.banks);
-    });
-  }, []);
-
   // Fire the welcome email once per new signup, the first time the user lands
   // on the dashboard after registering (covers email-confirm flows where the
   // signup screen has no session yet).
@@ -839,58 +814,6 @@ function DashboardPage() {
       }
     } catch { /* ignore */ }
   }, [user]);
-
-  const verifyBankWithPaystack = async () => {
-    const acct = bankAccountNumber.replace(/\s+/g, "");
-    if (!/^\d{10}$/.test(acct)) return toast.error("Account number must be 10 digits.");
-    if (!bankCode) return toast.error("Select your bank.");
-    const { data: sess } = await supabase.auth.getSession();
-    if (!sess.session) return toast.error("Please sign in again.");
-    const bank = banks.find((b) => b.code === bankCode);
-    setVerifyingKyc(true);
-    try {
-      const res = await verifyKycPaystack({
-        data: {
-          accessToken: sess.session.access_token,
-          accountNumber: acct,
-          bankCode,
-          bankName: bank?.name ?? bankName.trim() ?? "",
-        },
-      });
-      if (!res.ok) return toast.error(res.error);
-      setKycVerified(true);
-      setBankAccountNumber(acct);
-      setBankName(bank?.name ?? bankName.trim() ?? "");
-      setBankAccountName(res.accountName ?? "");
-      toast.success(`Verified · ${res.accountName}`);
-      await refresh();
-    } finally {
-      setVerifyingKyc(false);
-    }
-  };
-
-  const uploadKycDocument = async () => {
-    if (!kycDocFile) return toast.error("Select a file first");
-    if (kycDocFile.size > 5 * 1024 * 1024) return toast.error("File must be under 5MB");
-    const { data: sess } = await supabase.auth.getSession();
-    if (!sess.session) return toast.error("Please sign in again.");
-    setKycDocUploading(true);
-    try {
-      const ext = kycDocFile.name.split(".").pop() ?? "jpg";
-      const path = `${sess.session.user.id}/${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from("kyc-documents").upload(path, kycDocFile, { contentType: kycDocFile.type });
-      if (uploadErr) { toast.error(uploadErr.message); return; }
-      const { data: urlData } = await supabase.storage.from("kyc-documents").createSignedUrl(path, 604800);
-      if (!urlData?.signedUrl) { toast.error("Failed to get document URL"); return; }
-      const docType = kycDocFile.type.startsWith("image/") ? "Image" : "PDF";
-      const { error: updErr } = await supabase.from("profiles").update({ kyc_document_url: urlData.signedUrl, kyc_document_type: docType }).eq("id", sess.session.user.id);
-      if (updErr) { toast.error(updErr.message); return; }
-      toast.success("KYC document uploaded. Admin will review it.");
-      setKycDocFile(null);
-      await refresh();
-    } catch (e: any) { toast.error(e?.message ?? "Upload failed"); }
-    finally { setKycDocUploading(false); }
-  };
 
   const load = async (): Promise<Account[]> => {
     if (!user) return [];
@@ -1081,8 +1004,8 @@ function DashboardPage() {
 
   const requestPayout = async () => {
     if (!selected) return;
-    if (!bankAccountNumber) return toast.error("Add your bank account in the KYC card first.");
-    if (!kycVerified) return toast.error("Bank account pending admin verification.");
+    if (!profile?.bank_account_number) return toast.error("Add your bank account in the KYC card on your Profile page first.");
+    if (!profile?.kyc_verified) return toast.error("Bank account pending admin verification.");
     if (selected.status !== "funded") return toast.error("Account must be funded.");
     const equity = Number(selected.current_equity ?? selected.starting_balance);
     const profit = equity - selected.starting_balance;
@@ -1163,9 +1086,9 @@ function DashboardPage() {
       amountNaira: amountInNaira,
       profitPercent: Number(((requestedProfit / selected.starting_balance) * 100).toFixed(4)),
       bankDetails: {
-        account_number: bankAccountNumber,
-        bank_name: bankName,
-        account_name: bankAccountName,
+        account_number: profile?.bank_account_number ?? "",
+        bank_name: profile?.bank_name ?? "",
+        account_name: profile?.bank_account_name ?? "",
       },
     }});
     setSubmitting(false);
@@ -1453,10 +1376,10 @@ function DashboardPage() {
                     {isExpanded && (
                       <AccountGroupDetail
                         group={group}
-                        bankAccountNumber={bankAccountNumber}
-                        bankName={bankName}
-                        bankAccountName={bankAccountName}
-                        kycVerified={kycVerified}
+                        bankAccountNumber={profile?.bank_account_number ?? ""}
+                        bankName={profile?.bank_name ?? ""}
+                        bankAccountName={profile?.bank_account_name ?? ""}
+                        kycVerified={!!profile?.kyc_verified}
                         profile={profile}
                         user={user}
                         payouts={payouts}
