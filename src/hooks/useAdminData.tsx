@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { formatNaira } from "@/lib/utils";
 import { verifyKycServer, verifyKycDocumentServer, rejectKycDocumentServer } from "@/server/kyc.functions";
-import { addSocialProofServer, updateSocialProofServer, deleteSocialProofServer, approvePhase2Server, approveFundedServer, provisionPayoutServer } from "@/server/admin.functions";
+import { addSocialProofServer, updateSocialProofServer, deleteSocialProofServer, approvePhase2Server, approveFundedServer, provisionPayoutServer, provisionNextTierServer } from "@/server/admin.functions";
 import { notifyEmail } from "@/lib/notify-email";
 
 
@@ -99,7 +99,7 @@ function useAdminDataHook() {
   const [poolFormOpen, setPoolFormOpen] = useState(false);
   const [poolSaving, setPoolSaving] = useState(false);
   const [viewCredsFor, setViewCredsFor] = useState<any | null>(null);
-  const [poolForm, setPoolForm] = useState({ mt5_login: "", mt5_password: "", investor_password: "", mt5_server: "Exness-MT5Trial9", account_size_ngn: "", account_size_usd: "", currency: "NGN", phase: "1", notes: "" });
+  const [poolForm, setPoolForm] = useState({ mt5_login: "", mt5_password: "", investor_password: "", mt5_server: "Exness-MT5Trial9", account_size_ngn: "", account_size_usd: "", currency: "NGN", phase: "1", funded_tier: "1", notes: "" });
   const [socialItems, setSocialItems] = useState<any[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState("");
@@ -378,6 +378,25 @@ function useAdminDataHook() {
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Approval failed");
+    }
+  };
+
+  // Manually advance a funded trader to the next tier (Funded N -> N+1),
+  // provisioning a fresh account from the pool. Works for approved payouts
+  // that couldn't be marked "paid".
+  const advanceTier = async (a: any) => {
+    if (a.status !== "funded" && Number(a.current_phase) < 3) return toast.error("Only funded accounts can advance a tier");
+    const from = Number(a.funded_tier ?? 1);
+    const to = from + 1;
+    if (!confirm(`Advance ${a.profiles?.full_name ?? "trader"} (${a.mt5_login}) from Funded ${from} to Funded ${to}? This will close their current account and provision a fresh one from the Funded ${to} pool.`)) return;
+    if (!session?.access_token) return toast.error("Please sign in again");
+    try {
+      const result = await provisionNextTierServer({ data: { accessToken: session.access_token, traderAccountId: a.id } });
+      if (!result?.ok) return toast.error(result?.error ?? "Provision failed");
+      toast.success(`Advanced to Funded ${result.toTier} — new account ${result.newLogin}`);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Provision failed");
     }
   };
 
@@ -764,7 +783,7 @@ function useAdminDataHook() {
     challengeList, challengeEditOpen, editingChallenge, challengeForm, savingChallenge,
     openNewChallenge, openEditChallenge, saveChallenge, toggleChallengeActive, deleteChallenge, deletingChallengeId, setDeletingChallengeId, setChallengeEditOpen, setChallengeForm,
     load, loadChallenges, loadTickets, loadAffiliate, loadPartners, loadDiscounts,
-    updatePayout, updateAccount, resetAccountBalance, approvePhase2, approveFunded,
+    updatePayout, updateAccount, resetAccountBalance, approvePhase2, approveFunded, advanceTier,
   };
 }
 

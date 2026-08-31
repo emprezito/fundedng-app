@@ -3,6 +3,15 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendEventEmail } from "@/lib/email.server";
 import { claimPoolAccount } from "@/lib/account-pool.server";
 import { getUSDRate } from "@/lib/exchange-rate.server";
+import { sendMetaEvent } from "@/lib/fb-capi.server";
+
+function clientIp(request: Request): string | undefined {
+  return (
+    request.headers.get("cf-connecting-ip") ??
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    undefined
+  );
+}
 
 /**
  * Server-side Squad verification.
@@ -45,6 +54,8 @@ export const Route = createFileRoute("/api/verify-payment")({
             discount_code?: string;
             partner_promo_code?: string;
             original_amount?: string;
+            fbp?: string;
+            fbc?: string;
           };
           const reference = body.reference?.trim();
           const challengeId = body.challenge_id?.trim();
@@ -160,6 +171,22 @@ export const Route = createFileRoute("/api/verify-payment")({
             );
           }
 
+          // Meta Conversions API: Purchase (dedup-matched with the pixel event
+          // fired in payment.callback.tsx, which uses the same event_id).
+          void sendMetaEvent({
+            eventName: "Purchase",
+            eventId: `purchase_${order.id}`,
+            value: paidKobo / 100,
+            currency: "NGN",
+            email: userData.user.email,
+            externalId: userId,
+            fbp: body.fbp,
+            fbc: body.fbc,
+            sourceUrl: `${request.headers.get("origin") || new URL(request.url).origin}/payment/callback`,
+            clientIp: clientIp(request),
+            userAgent: request.headers.get("user-agent") ?? undefined,
+          }).catch((e) => console.error("[verify-payment] meta Purchase failed", e));
+
            if (discountCode) {
              await supabaseAdmin.rpc("increment_discount_redemption" as never, { _code: discountCode } as never);
            }
@@ -240,7 +267,7 @@ export const Route = createFileRoute("/api/verify-payment")({
              console.error("[verify-payment] purchase email failed", e),
            );
 
-           return Response.json({ ok: true, order_id: order.id, auto_delivered: poolResult?.ok ?? false });
+           return Response.json({ ok: true, order_id: order.id, auto_delivered: poolResult?.ok ?? false, amount_naira: paidKobo / 100 });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Verification failed";
           console.error("[verify-payment] unexpected", msg);

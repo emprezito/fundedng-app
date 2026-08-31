@@ -21,6 +21,7 @@ import { LeaderboardActivityBanner } from "@/components/dashboard/LeaderboardAct
 import { RefreshButton } from "@/components/ui/refresh-button";
 import { requestPayoutServer, sendPhaseRequestNotificationServer, requestPhase2AutoProvisionServer, requestFundedAutoProvisionServer } from "@/server/admin.functions";
 import { notifyEmail } from "@/lib/notify-email";
+import { fundedTierLabel, maxWithdrawalPercentForTier } from "@/lib/funded-tiers";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: DashboardPage });
 
@@ -45,6 +46,7 @@ interface Account {
 
   trading_days?: number;
   currency?: string;
+  funded_tier?: number;
   last_payout_date?: string | null;
   challenges?: { name: string; profit_target_percent: number; phase2_profit_target_percent?: number | null; max_drawdown_percent: number; phases: number; min_trading_days?: number; max_daily_drawdown_percent?: number | null; drawdown_type?: string };
 }
@@ -366,26 +368,24 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
       const daysTraded = account.trading_days ?? 0;
       if (daysTraded < 5) return toast.error(`You need at least 5 profitable trading days (≥0.5% profit each) to request a payout. You have ${daysTraded} so far.`);
     }
-    let minProfit: number;
+    // Funded tier determines the withdrawal cap (% of starting balance) per payout.
+    const currentTier = Number(account.funded_tier ?? 1);
+    const tierCapPercent = maxWithdrawalPercentForTier(currentTier);
     let profitCap: number;
-    if (isUsdAccount) {
-      if (priorCount < 2) { minProfit = start * 0.06; profitCap = start * 0.06; }
-      else if (priorCount < 4) { minProfit = start * 0.1; profitCap = start * 0.1; }
-      else { minProfit = 0; profitCap = (equity - start) * 0.5; }
+    if (tierCapPercent >= 100) {
+      profitCap = (equity - start) * 1; // 100% of realized profit
     } else {
-      minProfit = start * 0.1;
-      profitCap = priorCount === 0 ? start * 0.1 : start * 0.5;
+      profitCap = start * (tierCapPercent / 100);
     }
+    // Min profit required to request a payout = the tier cap (you can only
+    // withdraw up to the cap, and you need that much realized profit to cash out).
+    let minProfit = profitCap;
     const profit = equity - start;
-    if (profit < minProfit) return toast.error(`You need at least ${formatNaira(minProfit)} in profit to request a payout.`);
+    if (profit < minProfit) return toast.error(`You need at least ${formatNaira(minProfit)} in profit (${tierCapPercent}% of your starting balance) to request a payout.`);
     const requestedProfit = Math.min(profit, profitCap);
     const amount = Math.floor(requestedProfit * 0.8);
-    if (priorCount === 0) {
-      const capText = isUsdAccount
-        ? `Payments 1-2 capped at 6% each, 3-4 capped at 10% each, final payout is 50% of remaining profit.`
-        : `First payout capped at ${formatNaira(minProfit)} profit (you receive 80% = ${formatNaira(amount)}). Subsequent payouts use 50% cap.`;
-      toast.message(capText);
-    }
+    const capText = `You're on ${fundedTierLabel(currentTier)} — max withdrawal is ${tierCapPercent}% of your starting balance this payout. You receive 80% of the capped amount.`;
+    toast.message(capText);
     setSubmitting(true);
     let exchangeRate = 1550;
     if (isUsdAccount) {
@@ -441,6 +441,13 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
           { label: "Drawdown Limit", value: fmt(Math.floor(peakEquity * (1 - maxDD / 100))), color: "text-red-500" },
           ...(maxDailyDD ? [{ label: "Daily DD Limit", value: `${maxDailyDD}%`, color: "text-red-500" }] : []),
           { label: "Status", value: <Badge className={`${statusVariant[account.status]} font-display`}>{account.status.toUpperCase()}</Badge> },
+          ...(account.status === "funded"
+            ? [{
+                label: "Funded Tier",
+                value: <span className="font-display">{fundedTierLabel(Number(account.funded_tier ?? 1))} · {maxWithdrawalPercentForTier(Number(account.funded_tier ?? 1))}% cap</span>,
+                color: "text-gold",
+              }]
+            : []),
         ].map((m, i) => (
           <div key={i} className="rounded-lg border border-border bg-background/50 p-3">
             <div className="text-[10px] text-muted-foreground">{m.label}</div>
@@ -1031,36 +1038,21 @@ function DashboardPage() {
       }
     }
 
-    let minProfit: number;
+    const currentTier = Number(selected.funded_tier ?? 1);
+    const tierCapPercent = maxWithdrawalPercentForTier(currentTier);
     let profitCap: number;
-    if (isUsdAccount) {
-      if (priorCount < 2) {
-        minProfit = selected.starting_balance * 0.06;
-        profitCap = selected.starting_balance * 0.06;
-      } else if (priorCount < 4) {
-        minProfit = selected.starting_balance * 0.1;
-        profitCap = selected.starting_balance * 0.1;
-      } else {
-        minProfit = 0;
-        profitCap = profit * 0.5;
-      }
+    if (tierCapPercent >= 100) {
+      profitCap = profit; // 100% of realized profit
     } else {
-      const firstNgnCap = selected.starting_balance * 0.1;
-      const subsequentNgnCap = selected.starting_balance * 0.5;
-      minProfit = selected.starting_balance * 0.1;
-      profitCap = priorCount === 0 ? firstNgnCap : subsequentNgnCap;
+      profitCap = selected.starting_balance * (tierCapPercent / 100);
     }
-    if (profit < minProfit) return toast.error(`You need at least ${formatNaira(minProfit)} in profit to request a payout.`);
+    const minProfit = profitCap;
+    if (profit < minProfit) return toast.error(`You need at least ${formatNaira(minProfit)} in profit (${tierCapPercent}% of your starting balance) to request a payout.`);
 
     const requestedProfit = Math.min(profit, profitCap);
     const amount = Math.floor(requestedProfit * 0.8);
 
-    if (priorCount === 0) {
-      const capText = isUsdAccount
-        ? `Payments 1-2 capped at 6% each, 3-4 capped at 10% each, final payout is 50% of remaining profit.`
-        : `First payout capped at ${formatNaira(minProfit)} profit (you receive 80% = ${formatNaira(amount)}). Subsequent payouts use 50% cap.`;
-      toast.message(capText);
-    }
+    toast.message(`You're on ${fundedTierLabel(currentTier)} — max withdrawal is ${tierCapPercent}% of your starting balance this payout. You receive 80% of the capped amount.`);
     setSubmitting(true);
     let exchangeRate = 1550;
     if (isUsdAccount) {

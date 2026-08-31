@@ -37,17 +37,19 @@ export const Route = createFileRoute("/api/admin/pool")({
             account_size_usd?: number;
             currency?: string;
             phase?: number;
+            funded_tier?: number;
             notes?: string;
             // archive / delete
             id?: string;
             // bulk_add
-            accounts?: Array<{ mt5_login: string; mt5_password: string; investor_password: string; mt5_server?: string; account_size_ngn?: number; account_size_usd?: number; currency?: string; notes?: string }>;
+            accounts?: Array<{ mt5_login: string; mt5_password: string; investor_password: string; mt5_server?: string; account_size_ngn?: number; account_size_usd?: number; currency?: string; phase?: number; funded_tier?: number; notes?: string }>;
           };
 
           if (body.action === "add") {
-            const { mt5_login, mt5_password, investor_password, mt5_server, account_size_ngn, account_size_usd, currency, phase, notes } = body;
+            const { mt5_login, mt5_password, investor_password, mt5_server, account_size_ngn, account_size_usd, currency, phase, funded_tier, notes } = body;
             const poolCurrency = currency || "NGN";
             const poolPhase = phase && [1, 2, 3].includes(phase) ? phase : 1;
+            const poolFundedTier = poolPhase === 3 && funded_tier ? Math.max(1, Math.floor(funded_tier)) : undefined;
             if (!mt5_login || !mt5_password || !investor_password) {
               return Response.json(
                 { error: "mt5_login, mt5_password, and investor_password are required" },
@@ -78,6 +80,7 @@ export const Route = createFileRoute("/api/admin/pool")({
                 account_size_usd: poolCurrency === "USD" ? (account_size_usd ?? null) : null,
                 currency: poolCurrency,
                 phase: poolPhase,
+                funded_tier: poolFundedTier ?? null,
                 notes: notes?.trim() ?? null,
               })
               .select("id")
@@ -88,14 +91,19 @@ export const Route = createFileRoute("/api/admin/pool")({
           }
 
           if (body.action === "bulk_add") {
-            const { accounts, phase } = body;
+            const { accounts, phase, funded_tier } = body;
             const poolPhase = phase && [1, 2, 3].includes(phase) ? phase : 1;
+            const poolFundedTier = poolPhase === 3 && funded_tier ? Math.max(1, Math.floor(funded_tier)) : undefined;
             if (!accounts || !Array.isArray(accounts) || accounts.length === 0) {
               return Response.json({ error: "accounts array is required" }, { status: 400 });
             }
 
             const rows = accounts.map((a) => {
               const currency = a.currency || "NGN";
+              const acctPhase = (a.phase && [1, 2, 3].includes(a.phase) ? a.phase : poolPhase);
+              const acctTier = acctPhase === 3
+                ? Math.max(1, Math.floor(a.funded_tier ?? poolFundedTier ?? 1))
+                : undefined;
               return {
                 mt5_login: a.mt5_login.trim(),
                 mt5_password: a.mt5_password.trim(),
@@ -104,7 +112,8 @@ export const Route = createFileRoute("/api/admin/pool")({
                 account_size_ngn: currency === "USD" ? null : (a.account_size_ngn ?? null),
                 account_size_usd: currency === "USD" ? (a.account_size_usd ?? null) : null,
                 currency,
-                phase: poolPhase,
+                phase: acctPhase,
+                funded_tier: acctTier ?? null,
                 notes: a.notes?.trim() ?? null,
               };
             });

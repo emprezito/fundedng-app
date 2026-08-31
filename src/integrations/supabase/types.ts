@@ -1207,6 +1207,7 @@ export type Database = {
           deleted_at: string | null
           funded_at: string | null
           funded_requested_at: string | null
+          funded_tier: number
           id: string
           investor_password: string | null
           last_synced_at: string | null
@@ -1240,6 +1241,7 @@ export type Database = {
           deleted_at?: string | null
           funded_at?: string | null
           funded_requested_at?: string | null
+          funded_tier?: number
           id?: string
           investor_password?: string | null
           last_synced_at?: string | null
@@ -1273,6 +1275,7 @@ export type Database = {
           deleted_at?: string | null
           funded_at?: string | null
           funded_requested_at?: string | null
+          funded_tier?: number
           id?: string
           investor_password?: string | null
           last_synced_at?: string | null

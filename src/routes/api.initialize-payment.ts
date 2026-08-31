@@ -3,6 +3,15 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendEventEmail } from "@/lib/email.server";
 import { claimPoolAccount } from "@/lib/account-pool.server";
 import { getUSDRate } from "@/lib/exchange-rate.server";
+import { sendMetaEvent } from "@/lib/fb-capi.server";
+
+function clientIp(request: Request): string | undefined {
+  return (
+    request.headers.get("cf-connecting-ip") ??
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    undefined
+  );
+}
 
 /**
  * Server-side Squad initialization for the redirect checkout flow.
@@ -30,7 +39,7 @@ export const Route = createFileRoute("/api/initialize-payment")({
           }
           const user = userData.user;
 
-          const body = (await request.json().catch(() => ({}))) as { challenge_id?: string; discount_code?: string; partner_promo_code?: string; currency?: string; exchange_rate?: number };
+          const body = (await request.json().catch(() => ({}))) as { challenge_id?: string; discount_code?: string; partner_promo_code?: string; currency?: string; exchange_rate?: number; event_id?: string; fbp?: string; fbc?: string };
           const challengeId = body.challenge_id?.trim();
           if (!challengeId) {
             return Response.json({ error: "challenge_id is required" }, { status: 400 });
@@ -125,6 +134,22 @@ export const Route = createFileRoute("/api/initialize-payment")({
           const discountAmountNaira = Math.floor(originalAmountNaira * discountPercent / 100);
           const amountKobo = Math.max(0, originalAmountNaira - discountAmountNaira) * 100;
 
+          // Meta Conversions API: InitiateCheckout (dedup-matched with the pixel
+          // event fired in buy.tsx, which generates the same event_id).
+          void sendMetaEvent({
+            eventName: "InitiateCheckout",
+            eventId: body.event_id || `ic_${reference}`,
+            value: amountKobo / 100,
+            currency: "NGN",
+            email: user.email,
+            externalId: user.id,
+            fbp: body.fbp,
+            fbc: body.fbc,
+            sourceUrl: `${origin}/buy`,
+            clientIp: clientIp(request),
+            userAgent: request.headers.get("user-agent") ?? undefined,
+          }).catch((e) => console.error("[initialize-payment] meta InitiateCheckout failed", e));
+
           // 100 % discount → free order: skip Squad entirely
           if (amountKobo <= 0) {
             const { data: order, error: orderErr } = await supabaseAdmin
@@ -150,6 +175,20 @@ export const Route = createFileRoute("/api/initialize-payment")({
                 { status: 500 },
               );
             }
+
+            void sendMetaEvent({
+              eventName: "Purchase",
+              eventId: `purchase_${order.id}`,
+              value: 0,
+              currency: "NGN",
+              email: user.email,
+              externalId: user.id,
+              fbp: body.fbp,
+              fbc: body.fbc,
+              sourceUrl: `${origin}/buy`,
+              clientIp: clientIp(request),
+              userAgent: request.headers.get("user-agent") ?? undefined,
+            }).catch((e) => console.error("[initialize-payment] meta Purchase failed", e));
 
             if (discountCode) {
               await supabaseAdmin.rpc("increment_discount_redemption" as never, { _code: discountCode } as never);

@@ -154,7 +154,7 @@ function PoolPage() {
               {poolAccounts.map((a: any) => {
                 const statusColor: Record<string, string> = { available: "text-green-500 border-green-500/40", assigned: "text-blue-500 border-blue-500/40", archived: "text-muted-foreground border-muted", flagged: "text-red-500 border-red-500/40" };
                 const isUsd = a.currency === "USD";
-                const phaseLabel = a.phase === 1 ? "Phase 1" : a.phase === 2 ? "Phase 2" : "Funded";
+                const phaseLabel = a.phase === 1 ? "Phase 1" : a.phase === 2 ? "Phase 2" : a.funded_tier ? `Funded ${a.funded_tier}` : "Funded";
                 return (
                   <TableRow key={a.id}>
                     <TableCell className="font-mono text-xs">{a.mt5_login}</TableCell>
@@ -233,6 +233,17 @@ function PoolPage() {
                 ))}
               </div>
             </div>
+            {poolForm.phase === "3" && (
+              <div className="grid gap-1.5">
+                <Label>Funded Tier *</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[{ v: "1", l: "1" }, { v: "2", l: "2" }, { v: "3", l: "3" }, { v: "4", l: "4+" }].map((opt) => (
+                    <button key={opt.v} type="button" onClick={() => setPoolForm({ ...poolForm, funded_tier: opt.v })}
+                      className={`rounded-md border px-3 py-2 text-sm font-display ${poolForm.funded_tier === opt.v ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Funded {opt.l}</button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid gap-1.5"><Label htmlFor="pool-login">MT5 Login *</Label><Input id="pool-login" value={poolForm.mt5_login} onChange={(e) => setPoolForm({ ...poolForm, mt5_login: e.target.value })} placeholder="e.g. 12345678" /></div>
             <div className="grid gap-1.5"><Label htmlFor="pool-password">Master password *</Label><Input id="pool-password" value={poolForm.mt5_password} onChange={(e) => setPoolForm({ ...poolForm, mt5_password: e.target.value })} placeholder="Trading password" /></div>
             <div className="grid gap-1.5"><Label htmlFor="pool-investor">Investor password *</Label><Input id="pool-investor" value={poolForm.investor_password} onChange={(e) => setPoolForm({ ...poolForm, investor_password: e.target.value })} placeholder="Read-only password for VPS monitoring" /></div>
@@ -269,12 +280,12 @@ function PoolPage() {
               try {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session?.access_token) return;
-                const body: any = { action: "add", mt5_login: poolForm.mt5_login.trim(), mt5_password: poolForm.mt5_password.trim(), investor_password: poolForm.investor_password.trim(), mt5_server: poolForm.mt5_server.trim() || "Exness-MT5Trial9", currency: poolForm.currency, phase: Number(poolForm.phase), notes: poolForm.notes.trim() || null };
+                const body: any = { action: "add", mt5_login: poolForm.mt5_login.trim(), mt5_password: poolForm.mt5_password.trim(), investor_password: poolForm.investor_password.trim(), mt5_server: poolForm.mt5_server.trim() || "Exness-MT5Trial9", currency: poolForm.currency, phase: Number(poolForm.phase), funded_tier: Number(poolForm.phase) === 3 ? Number(poolForm.funded_tier) : undefined, notes: poolForm.notes.trim() || null };
                 if (poolForm.currency === "USD") body.account_size_usd = Number(poolForm.account_size_usd);
                 else body.account_size_ngn = Number(poolForm.account_size_ngn);
                 const res = await fetch("/api/admin/pool", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify(body) });
                 const json = await res.json();
-                if (json.ok) { toast.success("Account added to pool"); setPoolForm({ mt5_login: "", mt5_password: "", investor_password: "", mt5_server: "Exness-MT5Trial9", account_size_ngn: "", account_size_usd: "", currency: "NGN", phase: "1", notes: "" }); setPoolFormOpen(false); loadPool(); }
+                if (json.ok) { toast.success("Account added to pool"); setPoolForm({ mt5_login: "", mt5_password: "", investor_password: "", mt5_server: "Exness-MT5Trial9", account_size_ngn: "", account_size_usd: "", currency: "NGN", phase: "1", funded_tier: "1", notes: "" }); setPoolFormOpen(false); loadPool(); }
                 else { toast.error(json.error ?? "Failed to add account"); }
               } catch (e: any) { toast.error(e?.message ?? "Failed"); } finally { setPoolSaving(false); }
             }} disabled={poolSaving}>{poolSaving ? "Adding…" : "Add to Pool"}</Button>

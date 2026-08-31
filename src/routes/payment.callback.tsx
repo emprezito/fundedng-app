@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, CheckCircle2, XCircle, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { trackPurchase, getFbp, getFbc } from "@/lib/fb-pixel";
 
 export const Route = createFileRoute("/payment/callback")({
   validateSearch: z.object({
@@ -54,11 +55,12 @@ function PaymentCallback() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ reference: ref, challenge_id, discount_percent: dp, discount_code: dc, partner_promo_code: pp, original_amount: oa }),
+          body: JSON.stringify({ reference: ref, challenge_id, discount_percent: dp, discount_code: dc, partner_promo_code: pp, original_amount: oa, fbp: getFbp(), fbc: getFbc() }),
         });
         const result = (await res.json().catch(() => ({}))) as {
           ok?: boolean;
           order_id?: string;
+          amount_naira?: number;
           error?: string;
         };
         if (!res.ok || !result.ok || !result.order_id) {
@@ -70,6 +72,10 @@ function PaymentCallback() {
         setStatus("success");
         setMessage("Payment confirmed! Your account is being prepared.");
         toast.success("Payment confirmed!");
+        trackPurchase(
+          Number(result.amount_naira ?? 0) || (oa ? oa / 100 : 0),
+          `purchase_${result.order_id}`,
+        );
 
         fetch("/api/notify-new-purchase", {
           method: "POST",

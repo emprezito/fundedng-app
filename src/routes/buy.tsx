@@ -15,6 +15,7 @@ import { Brand } from "@/components/site/Brand";
 import { ThemeToggle } from "@/components/site/ThemeToggle";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { AppSidebar, MobileBottomNav } from "@/components/site/AppShell";
+import { trackEvent, trackPurchase, generateEventId, getFbp, getFbc } from "@/lib/fb-pixel";
 
 export const Route = createFileRoute("/buy")({
   validateSearch: z.object({
@@ -273,6 +274,15 @@ function BuyPage() {
 
     try {
       const challengeId = selected!.id;
+      // Meta pixel + CAPI dedup-matched InitiateCheckout. The SAME event_id is
+      // sent to /api/initialize-payment so the server can send its CAPI copy
+      // with an identical event_id/name and Meta dedupes the pair.
+      const eventId = generateEventId("ic");
+      trackEvent(
+        "InitiateCheckout",
+        currency === "NGN" ? { value: payable, currency: "NGN", content_type: "product" } : { currency: "USD", content_type: "product" },
+        eventId,
+      );
       // Initialize the transaction server-side and redirect to Squad's
       // hosted checkout page. After payment, Squad redirects the user to
       // /payment/callback, which calls /api/verify-payment to finalize.
@@ -282,7 +292,7 @@ function BuyPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-          body: JSON.stringify({ challenge_id: challengeId, discount_code: promoDiscount?.code, partner_promo_code: partnerCode, currency, exchange_rate: exchangeRate }),
+          body: JSON.stringify({ challenge_id: challengeId, discount_code: promoDiscount?.code, partner_promo_code: partnerCode, currency, exchange_rate: exchangeRate, event_id: eventId, fbp: getFbp(), fbc: getFbc() }),
       });
       const result = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -301,6 +311,7 @@ function BuyPage() {
         setLoading(false);
         setConfirmOpen(false);
         toast.success("Challenge acquired! Your account is being prepared.");
+        trackPurchase(0, `purchase_${result.order_id}`);
         fetch("/api/notify-new-purchase", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -680,12 +691,9 @@ function BuyPage() {
                 </div>
                 )}
 
-                <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-muted-foreground">
-                  <span className="font-display block font-semibold text-warning">Rules reminder</span>
-                    {currency === "USD"
-                      ? "USD accounts: Min 3-minute hold on all trades (SL, TP, manual). Max 2 positions per symbol; no averaging into losers. 10% static drawdown from starting balance (based on closed balance, not floating equity). 5% daily drawdown (resets midnight UTC). No weekend holding — all positions must close before Friday 21:00 UTC (crypto exempt). News blackout: 5 minutes before/after high-impact events. 5 profitable trading days required per phase — each day must show >=0.5% net profit on your starting balance. Max 5 payouts per account. 10 business days between payouts. Inactivity limit: 15 days."
-                      : "Trade only on your FundedNG MT5 evaluation account. No automated trading. No copy trading. All trades must be held at least 3 minutes (manual, SL, and TP closes all count). Max 2 positions per symbol; no averaging into losers. 20% trailing drawdown based on closed balance (from the highest balance reached — floating losses don't count). 10% max daily loss from the day's highest balance (resets midnight UTC). Profit target is measured on closed balance."}
-                </div>
+                <Link to="/rules" target="_blank" className="flex items-center gap-1 text-xs text-primary hover:underline">
+                  <ShieldCheck className="h-3.5 w-3.5" /> Read our trading rules before you start
+                </Link>
 
                 <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-background/50 p-3 text-xs">
                   <input

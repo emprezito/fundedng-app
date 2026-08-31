@@ -432,7 +432,7 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
           id, amount_naira, trader_account_id, user_id,
           trader_accounts(
             id, user_id, mt5_login, mt5_server, currency,
-            starting_balance, current_phase, challenge_id, order_id,
+            starting_balance, current_phase, funded_tier, challenge_id, order_id,
             challenges(name),
             profiles(full_name)
           )
@@ -449,6 +449,9 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
       const startingBalance = Number(account?.starting_balance ?? 0);
       const challengeId = account?.challenge_id;
       const oldPhase = Number(account?.current_phase ?? 1);
+      const oldTier = Number(account?.funded_tier ?? 1);
+      // After a payout the trader moves up one funded tier.
+      const nextTier = oldPhase >= 3 ? oldTier + 1 : 1;
       const oldLogin = account?.mt5_login ?? "?";
       const balanceDisplay = currency === "USD"
         ? `$${startingBalance.toLocaleString()}`
@@ -474,14 +477,15 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
         challengeId: challengeId ?? "",
         userId: traderUserId,
         phase: oldPhase,
+        fundedTier: nextTier,
         phaseProgression: true,
       });
 
       if (poolResult.ok) {
-        // 3. Set correct phase on new account
+        // 3. Correct phase + new funded tier on the new account
         await supabaseAdmin
           .from("trader_accounts")
-          .update({ current_phase: oldPhase } as never)
+          .update({ current_phase: oldPhase, funded_tier: nextTier } as never)
           .eq("id", poolResult.accountId);
 
         // 4. In-app notification
@@ -510,6 +514,7 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
           balanceDisplay,
           oldLogin,
           oldPhase,
+          nextTier,
         };
       } else {
         // Pool empty — rollback old account
@@ -523,6 +528,125 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Provision failed";
       console.error("[provisionPayoutServer] unexpected", msg);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Manual next-tier provisioning.
+//
+// Moves a funded trader to a fresh account one tier up (e.g. Funded 1 -> 2)
+// by closing their current account and claiming the matching next-tier account
+// from the pool. Works regardless of whether a payout has been marked paid —
+// so an already-approved payout that couldn't be processed through the normal
+// flow can still be handled. For funded accounts the next tier = funded_tier + 1.
+// ---------------------------------------------------------------------------
+const ProvisionNextTierInput = z.object({
+  accessToken: z.string().min(1),
+  traderAccountId: z.string().uuid(),
+});
+
+export const provisionNextTierServer = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => ProvisionNextTierInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const auth = await assertAdmin(data.accessToken);
+      if (!auth.ok) return auth;
+
+      const { data: account } = await supabaseAdmin
+        .from("trader_accounts")
+        .select(`
+          id, user_id, mt5_login, mt5_server, currency, starting_balance,
+          current_phase, funded_tier, challenge_id, status,
+          profiles(full_name)
+        `)
+        .eq("id", data.traderAccountId)
+        .maybeSingle();
+
+      if (!account) return { ok: false as const, error: "Account not found" };
+      if (account.status !== "funded" && Number(account.current_phase) < 3) {
+        return { ok: false as const, error: "Only funded accounts can advance to a new tier" };
+      }
+
+      const traderUserId = account.user_id;
+      const traderName = (account as any)?.profiles?.full_name ?? "Trader";
+      const currency = account.currency ?? "NGN";
+      const startingBalance = Number(account.starting_balance ?? 0);
+      const oldPhase = Number(account.current_phase ?? 3);
+      const oldTier = Number(account.funded_tier ?? 1);
+      // Funded tiers start at 1; next tier is one higher.
+      const nextTier = Math.max(1, oldTier + 1);
+      const oldLogin = account.mt5_login ?? "?";
+      const balanceDisplay = currency === "USD"
+        ? `$${startingBalance.toLocaleString()}`
+        : `₦${startingBalance.toLocaleString()}`;
+
+      // 1. Deactivate old account
+      await supabaseAdmin
+        .from("trader_accounts")
+        .update({ status: "closed" } as never)
+        .eq("id", account.id);
+
+      // 2. Provision a fresh account from the funded pool at the next tier
+      const newOrderId = crypto.randomUUID();
+      const poolResult = await claimPoolAccount({
+        orderId: newOrderId,
+        accountSizeNgn: currency === "USD" ? 0 : startingBalance,
+        accountSizeUsd: currency === "USD" ? startingBalance : undefined,
+        currency,
+        challengeId: account.challenge_id ?? "",
+        userId: traderUserId,
+        phase: 3,
+        fundedTier: nextTier,
+        phaseProgression: true,
+      });
+
+      if (poolResult.ok) {
+        // 3. Correct phase + funded tier on the new account
+        await supabaseAdmin
+          .from("trader_accounts")
+          .update({ current_phase: 3, funded_tier: nextTier } as never)
+          .eq("id", poolResult.accountId);
+
+        // 4. In-app notification
+        await supabaseAdmin
+          .from("notifications")
+          .insert({
+            user_id: traderUserId,
+            title: "🎉 New Funded Account Ready",
+            message: `Your account has been advanced to Funded ${nextTier}. A new account has been provisioned. New Login: ${poolResult.mt5Login} · Server: ${poolResult.mt5Server}. Your starting balance is ${balanceDisplay}. Check your dashboard for the password.`,
+            type: "success",
+          } as never);
+
+        // 5. Web push
+        await sendPushToUser(traderUserId, {
+          title: "🎉 New Funded Account Ready",
+          body: `Your new MT5 account is active. Tap to view credentials.`,
+          url: "/dashboard",
+        }).catch(() => {});
+
+        return {
+          ok: true as const,
+          newLogin: poolResult.mt5Login,
+          newServer: poolResult.mt5Server,
+          traderName,
+          balanceDisplay,
+          oldLogin,
+          fromTier: oldTier,
+          toTier: nextTier,
+        };
+      } else {
+        // Pool empty — rollback old account
+        await supabaseAdmin
+          .from("trader_accounts")
+          .update({ status: "active" } as never)
+          .eq("id", account.id);
+
+        return { ok: false as const, error: "Pool empty — no accounts available at Funded " + nextTier };
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Provision failed";
+      console.error("[provisionNextTierServer] unexpected", msg);
       return { ok: false as const, error: msg };
     }
   });

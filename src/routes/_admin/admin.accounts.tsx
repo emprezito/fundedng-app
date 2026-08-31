@@ -32,7 +32,7 @@ function AccountsPage() {
     setWarnTarget, setWarnReason, openWarningDialog, submitWarning,
     rejectTarget, rejectReason, rejecting, rejectType, setRejectTarget, setRejectReason, setRejectType,
     openRejectDialog, submitRejectPhase, approvePhase2, approveFunded, viewCredsFor, setViewCredsFor, updateAccount,
-    resetAccountBalance,
+    resetAccountBalance, advanceTier,
   } = useAdminData();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
@@ -166,7 +166,7 @@ function AccountsPage() {
                   <div className="text-xs text-muted-foreground">{a.challenges?.name} · login {a.mt5_login} {a.currency === "USD" && <Badge variant="outline" className="ml-1 border-blue-400/40 text-blue-500 text-[10px]">USD</Badge>}</div>
               </div>
               <div className="text-sm">{fmt(a.starting_balance)}</div>
-              <div className="font-display text-sm text-gold">Phase {a.current_phase}</div>
+              <div className="font-display text-sm text-gold">{a.current_phase >= 3 ? (a.funded_tier ? `Funded ${a.funded_tier}` : "Funded") : `Phase ${a.current_phase}`}</div>
               <Badge variant="outline" className="font-display">{a.status.toUpperCase()}</Badge>
               {a.monitor_paused && (
                 <Badge variant="outline" className="border-amber-500/50 text-amber-500 text-[10px]">⏸ Monitor Paused</Badge>
@@ -217,6 +217,30 @@ function AccountsPage() {
               </Button>
               {a.status === "funded" && payoutAccountIds.has(a.id) && (
                 <Button size="sm" variant="outline" onClick={() => resetAccountBalance(a)}>Reset Balance</Button>
+              )}
+              {a.status === "funded" && (
+                <Button size="sm" variant="outline" onClick={() => advanceTier(a)} title="Close current account and provision a fresh one at the next funded tier from the pool">
+                  Advance Tier
+                </Button>
+              )}
+              {a.status === "funded" && (
+                <div className="flex items-center gap-1 rounded-md border border-border bg-background px-1">
+                  <span className="px-1 text-[10px] text-muted-foreground">Tier</span>
+                  {[1, 2, 3, 4].map((t) => (
+                    <button key={t} type="button" title={`Set to Funded ${t}`}
+                      onClick={() => {
+                        const current = Number(a.funded_tier ?? 1);
+                        if (current === t) return;
+                        if (!confirm(`Set ${a.profiles?.full_name ?? "trader"} (${a.mt5_login}) to ${t === 4 ? "Funded 4+" : `Funded ${t}`}? This sets their current withdrawal tier.`)) return;
+                        updateAccount(a.id, { funded_tier: t });
+                      }}
+                      className={`rounded px-2 py-1 text-xs font-display ${
+                        (Number(a.funded_tier ?? 1) === t && t < 4)
+                          || (t === 4 && Number(a.funded_tier ?? 1) >= 4)
+                          ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                      }`}>{t === 4 ? "4+" : t}</button>
+                  ))}
+                </div>
               )}
               {a.status === "funded" && (
                 <Button size="sm" variant="ghost" className="h-8 w-8 p-0" disabled={certLoading === a.id} onClick={() => openFundedCertificate(a)}>

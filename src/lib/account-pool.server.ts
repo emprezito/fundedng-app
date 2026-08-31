@@ -59,6 +59,7 @@ export async function claimPoolAccount(args: {
   challengeId: string;
   userId: string;
   phase?: number;
+  fundedTier?: number;
   phaseProgression?: boolean;
 }): Promise<{ ok: true; accountId: string; mt5Login: string; mt5Password: string; mt5Server: string } | { ok: false; error: string }> {
   let lastError = "No accounts available for this size. Admin has been notified.";
@@ -66,25 +67,64 @@ export async function claimPoolAccount(args: {
   const accountSize = isUsd ? args.accountSizeUsd! : args.accountSizeNgn;
   const sizeKey = isUsd ? "account_size_usd" : "account_size_ngn";
   const phase = args.phase ?? 1;
+  // For funded (phase 3) pool accounts we also match on funded_tier.
+  const fundedTier = phase === 3 ? (args.fundedTier ?? 1) : undefined;
 
   for (let attempt = 1; attempt <= MAX_CLAIM_RETRIES; attempt++) {
-    // 1. Find oldest available account for this size, currency, and phase
-    const { data: poolRows, error: poolErr } = await supabaseAdmin
-      .from("account_pool")
-      .select("*")
-      .eq("status", "available")
-      .eq("currency", args.currency)
-      .eq(sizeKey, accountSize)
-      .eq("phase", phase)
-      .order("created_at", { ascending: true })
-      .limit(1);
+    // 1. Find an available account for this size, currency, and phase.
+    let poolRow: any = null;
+    let poolErr: any = null;
+
+    if (fundedTier !== undefined) {
+      // Funded (phase 3): prefer an exact funded_tier match, then fall back to
+      // any available funded account of the same size (so a one-tier shortfall
+      // doesn't block a payout entirely).
+      const base = () =>
+        supabaseAdmin
+          .from("account_pool")
+          .select("*")
+          .eq("status", "available")
+          .eq("currency", args.currency)
+          .eq(sizeKey, accountSize)
+          .eq("phase", phase);
+
+      const { data: exact, error: exactErr } = await base()
+        .eq("funded_tier", fundedTier)
+        .order("created_at", { ascending: true })
+        .limit(1);
+      if (exactErr) {
+        console.error("[claimPoolAccount] query failed", exactErr);
+        return { ok: false, error: "Pool lookup failed." };
+      }
+      poolRow = exact?.[0] ?? null;
+      if (!poolRow) {
+        const { data: anyTier, error: anyErr } = await base()
+          .order("created_at", { ascending: true })
+          .limit(1);
+        if (anyErr) {
+          console.error("[claimPoolAccount] query failed", anyErr);
+          return { ok: false, error: "Pool lookup failed." };
+        }
+        poolRow = anyTier?.[0] ?? null;
+      }
+    } else {
+      const { data: rows, error: err } = await supabaseAdmin
+        .from("account_pool")
+        .select("*")
+        .eq("status", "available")
+        .eq("currency", args.currency)
+        .eq(sizeKey, accountSize)
+        .eq("phase", phase)
+        .order("created_at", { ascending: true })
+        .limit(1);
+      poolErr = err;
+      poolRow = rows?.[0] ?? null;
+    }
 
     if (poolErr) {
       console.error("[claimPoolAccount] query failed", poolErr);
       return { ok: false, error: "Pool lookup failed." };
     }
-
-    const poolRow = poolRows?.[0];
     if (!poolRow) {
       if (attempt === 1) {
         const sizeLabel = isUsd ? `$${accountSize.toLocaleString("en-US")}` : `₦${accountSize.toLocaleString("en-NG")}`;
@@ -139,6 +179,7 @@ export async function claimPoolAccount(args: {
         starting_balance: accountSize,
         current_equity: accountSize,
         current_phase: phase,
+        funded_tier: phase === 3 ? (args.fundedTier ?? Number(poolRow.funded_tier ?? 1)) : 1,
         status: "active",
       })
       .select("id")

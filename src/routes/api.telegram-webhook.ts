@@ -91,7 +91,7 @@ export const Route = createFileRoute("/api/telegram-webhook")({
                   id, status, amount_naira, profit_percent, trader_account_id, user_id,
                   trader_accounts(
                     id, user_id, mt5_login, mt5_server, currency,
-                    starting_balance, current_phase, challenge_id, order_id,
+                    starting_balance, current_phase, funded_tier, challenge_id, order_id,
                     challenges(name),
                     profiles(full_name)
                   )
@@ -115,6 +115,8 @@ export const Route = createFileRoute("/api/telegram-webhook")({
               const traderName = account?.profiles?.full_name ?? "Trader";
               const challengeId = account?.challenge_id;
               const oldPhase = Number(account?.current_phase ?? 1);
+              const oldTier = Number(account?.funded_tier ?? 1);
+              const nextTier = oldPhase >= 3 ? oldTier + 1 : 1;
               const balanceDisplay = currency === "USD"
                 ? `$${startingBalance.toLocaleString()}`
                 : `₦${startingBalance.toLocaleString()}`;
@@ -151,6 +153,7 @@ export const Route = createFileRoute("/api/telegram-webhook")({
                 challengeId: challengeId ?? "",
                 userId: traderUserId,
                 phase: oldPhase,
+                fundedTier: nextTier,
                 phaseProgression: true,
               });
 
@@ -161,10 +164,10 @@ export const Route = createFileRoute("/api/telegram-webhook")({
                 newLogin = poolResult.mt5Login;
                 newServer = poolResult.mt5Server;
 
-                // 3. Set correct phase
+                // 3. Correct phase + new funded tier
                 await supabaseAdmin
                   .from("trader_accounts")
-                  .update({ current_phase: oldPhase } as never)
+                  .update({ current_phase: oldPhase, funded_tier: nextTier } as never)
                   .eq("id", poolResult.accountId);
 
                 // 4. In-app notification
@@ -202,7 +205,7 @@ export const Route = createFileRoute("/api/telegram-webhook")({
                     `Old Login: <code>${oldLogin}</code> → CLOSED\n` +
                     `New Login: <code>${newLogin}</code>\n` +
                     `Server: ${newServer}\n` +
-                    `Phase: ${oldPhase} · Size: ${balanceDisplay}`
+                    `Phase: ${oldPhase} · Size: ${balanceDisplay} · Tier: Funded ${nextTier}`
                   : `✅ <b>APPROVED</b> → 💳 <b>PAID</b>\n\n` +
                     `🔴 <b>Pool empty</b> — old account kept active.\n` +
                     `Login: <code>${oldLogin}</code>\n` +
