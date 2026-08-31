@@ -433,8 +433,7 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
           trader_accounts(
             id, user_id, mt5_login, mt5_server, currency,
             starting_balance, current_phase, funded_tier, challenge_id, order_id,
-            challenges(name),
-            profiles(full_name)
+            challenges(name)
           )
         `)
         .eq("id", data.payoutId)
@@ -444,7 +443,15 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
       if (!account) return { ok: false as const, error: "Account not found" };
 
       const traderUserId = account.user_id ?? (payout as any)?.user_id;
-      const traderName = account?.profiles?.full_name ?? "Trader";
+      const traderName = await (async () => {
+        if (!traderUserId) return "Trader";
+        const { data: prof } = await supabaseAdmin
+          .from("profiles")
+          .select("full_name")
+          .eq("id", traderUserId)
+          .maybeSingle();
+        return prof?.full_name ?? "Trader";
+      })();
       const currency = account?.currency ?? "NGN";
       const startingBalance = Number(account?.starting_balance ?? 0);
       const challengeId = account?.challenge_id;
@@ -553,23 +560,30 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
       const auth = await assertAdmin(data.accessToken);
       if (!auth.ok) return auth;
 
-      const { data: account } = await supabaseAdmin
+      const { data: account, error: findErr } = await supabaseAdmin
         .from("trader_accounts")
         .select(`
           id, user_id, mt5_login, mt5_server, currency, starting_balance,
-          current_phase, funded_tier, challenge_id, status,
-          profiles(full_name)
+          current_phase, funded_tier, challenge_id, status
         `)
         .eq("id", data.traderAccountId)
         .maybeSingle();
 
-      if (!account) return { ok: false as const, error: "Account not found" };
-      if (account.status !== "funded" && Number(account.current_phase) < 3) {
-        return { ok: false as const, error: "Only funded accounts can advance to a new tier" };
+      if (findErr) {
+        console.error("[provisionNextTierServer] lookup failed:", findErr);
+        return { ok: false as const, error: "Lookup failed: " + findErr.message };
       }
+      if (!account) return { ok: false as const, error: "Account not found" };
 
       const traderUserId = account.user_id;
-      const traderName = (account as any)?.profiles?.full_name ?? "Trader";
+      const traderName = await (async () => {
+        const { data: prof } = await supabaseAdmin
+          .from("profiles")
+          .select("full_name")
+          .eq("id", traderUserId)
+          .maybeSingle();
+        return prof?.full_name ?? "Trader";
+      })();
       const currency = account.currency ?? "NGN";
       const startingBalance = Number(account.starting_balance ?? 0);
       const oldPhase = Number(account.current_phase ?? 3);
