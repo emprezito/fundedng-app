@@ -145,7 +145,7 @@ export async function claimPoolAccount(args: {
       .update({
         status: "assigned",
         assigned_at: new Date().toISOString(),
-        assigned_order_id: args.orderId,
+        ...(args.phaseProgression ? {} : { assigned_order_id: args.orderId }),
       })
       .eq("id", poolRow.id)
       .eq("status", "available")
