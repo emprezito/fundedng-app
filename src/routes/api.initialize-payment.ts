@@ -4,7 +4,7 @@ import { sendEventEmail } from "@/lib/email.server";
 import { claimPoolAccount } from "@/lib/account-pool.server";
 import { getUSDRate } from "@/lib/exchange-rate.server";
 import { sendMetaEvent } from "@/lib/fb-capi.server";
-import { computeBreachReset, RESET_PHASE2_PERCENT, RESET_FUNDED_PERCENT } from "@/lib/breach-reset.server";
+import { computeBreachReset } from "@/lib/breach-reset.server";
 
 function clientIp(request: Request): string | undefined {
   return (

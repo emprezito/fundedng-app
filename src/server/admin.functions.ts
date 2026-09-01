@@ -6,7 +6,7 @@ import { claimPoolAccount } from "@/lib/account-pool.server";
 import { sendTelegramWithButtons } from "@/lib/telegram.server";
 import { sendDiscordNotification } from "@/lib/discord.server";
 import { sendPushToUser } from "@/lib/push.server";
-import { computeBreachReset, provisionBreachReset } from "@/lib/breach-reset.server";
+import { computeBreachReset } from "@/lib/breach-reset.server";
 
 const AddSocialProofInput = z.object({
   accessToken: z.string().min(1),

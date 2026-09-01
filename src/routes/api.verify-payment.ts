@@ -136,14 +136,12 @@ export const Route = createFileRoute("/api/verify-payment")({
 
           // Breach Reset: fee is a fraction of the challenge price (phase 2) or
           // account size (funded); no discount applies.
-          let resetQuote: Awaited<ReturnType<typeof computeBreachReset>> | null = null;
           if (resetAccountId) {
             const q = await computeBreachReset(resetAccountId);
             if (!q.ok) return Response.json({ error: q.error }, { status: 400 });
             if (!q.kind || q.account.user_id !== userId) {
               return Response.json({ error: "Account not eligible for reset" }, { status: 400 });
             }
-            resetQuote = q;
             const rate = await getUSDRate();
             effectivePriceNaira = q.isUsd
               ? Math.ceil(q.feeInCurrency * rate)

@@ -21,10 +21,14 @@ import { sendPushToUser } from "@/lib/push.server";
  * the naira fee used for Squad checkout is derived from it.
  */
 
-export const RESET_FUNDED_PERCENT = 0.6; // 60% of account size
+export const RESET_FUNDED_PERCENT = 0.6; // 60% of challenge price
 export const RESET_PHASE2_PERCENT = 0.3; // 30% of challenge price
 
 export type ResetKind = "phase2" | "funded";
+
+// Reset eligibility cutoff. Only accounts provisioned on/after this date
+// (hardcoded per product decision) are eligible for the paid reset.
+const RESET_ELIGIBLE_FROM = new Date("2026-09-01T00:00:00.000Z").getTime();
 
 /**
  * Compute the reset eligibility + fee for a breached account.
@@ -35,7 +39,7 @@ export async function computeBreachReset(accountId: string) {
     .from("trader_accounts")
     .select(`
       id, user_id, mt5_login, currency, starting_balance, current_phase,
-      funded_tier, challenge_id, status, reset_used
+      funded_tier, challenge_id, status, reset_used, created_at
     `)
     .eq("id", accountId)
     .maybeSingle();
@@ -47,6 +51,10 @@ export async function computeBreachReset(accountId: string) {
   }
   if (account.reset_used) {
     return { ok: false as const, error: "This account has already been reset once." };
+  }
+  const createdAt = account.created_at ? new Date(account.created_at).getTime() : NaN;
+  if (!createdAt || Number.isNaN(createdAt) || createdAt < RESET_ELIGIBLE_FROM) {
+    return { ok: false as const, error: "This account is not eligible for a reset. Please purchase a new challenge." };
   }
 
   const phase = Number(account.current_phase);
@@ -60,18 +68,18 @@ export async function computeBreachReset(accountId: string) {
   if (phase <= 1) {
     // Phase 1 breach: no reset — must buy a fresh challenge.
     return { ok: false as const, error: "Phase 1 accounts cannot be reset. Please purchase a new challenge." };
-  } else if (phase === 2) {
-    kind = "phase2";
+  } else {
+    // Phase 2 (30%) and Funded (60%) reset fees are both a fraction of the
+    // challenge price — NOT the account size.
     const { data: challenge } = await supabaseAdmin
       .from("challenges")
       .select("price_naira, usd_price")
       .eq("id", account.challenge_id)
       .maybeSingle();
     const base = isUsd ? Number(challenge?.usd_price ?? 0) : Number(challenge?.price_naira ?? 0);
-    feeInCurrency = Math.round(base * RESET_PHASE2_PERCENT * 100) / 100;
-  } else {
-    kind = "funded";
-    feeInCurrency = Math.round(startingBalance * RESET_FUNDED_PERCENT * 100) / 100;
+    kind = phase === 2 ? "phase2" : "funded";
+    const percent = phase === 2 ? RESET_PHASE2_PERCENT : RESET_FUNDED_PERCENT;
+    feeInCurrency = Math.round(base * percent * 100) / 100;
   }
 
   return {
