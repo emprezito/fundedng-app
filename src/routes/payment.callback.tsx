@@ -17,12 +17,13 @@ export const Route = createFileRoute("/payment/callback")({
     dc: z.string().optional(),
     pp: z.string().optional(),
     oa: z.coerce.number().optional(),
+    ra: z.string().optional(),
   }),
   component: PaymentCallback,
 });
 
 function PaymentCallback() {
-  const { reference, trxref, challenge_id, dp, dc, pp, oa } = Route.useSearch();
+  const { reference, trxref, challenge_id, dp, dc, pp, oa, ra } = Route.useSearch();
   const { session, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const ranRef = useRef(false);
@@ -55,7 +56,7 @@ function PaymentCallback() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ reference: ref, challenge_id, discount_percent: dp, discount_code: dc, partner_promo_code: pp, original_amount: oa, fbp: getFbp(), fbc: getFbc() }),
+          body: JSON.stringify({ reference: ref, challenge_id, discount_percent: dp, discount_code: dc, partner_promo_code: pp, original_amount: oa, reset_account_id: ra, fbp: getFbp(), fbc: getFbc() }),
         });
         const result = (await res.json().catch(() => ({}))) as {
           ok?: boolean;

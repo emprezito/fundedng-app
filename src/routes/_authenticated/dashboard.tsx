@@ -19,7 +19,7 @@ import { PendingAccounts } from "@/components/dashboard/PendingAccounts";
 import { TradingAnalytics } from "@/components/dashboard/TradingAnalytics";
 import { LeaderboardActivityBanner } from "@/components/dashboard/LeaderboardActivityBanner";
 import { RefreshButton } from "@/components/ui/refresh-button";
-import { requestPayoutServer, sendPhaseRequestNotificationServer, requestPhase2AutoProvisionServer, requestFundedAutoProvisionServer } from "@/server/admin.functions";
+import { requestPayoutServer, sendPhaseRequestNotificationServer, requestPhase2AutoProvisionServer, requestFundedAutoProvisionServer, getBreachResetQuoteServer } from "@/server/admin.functions";
 import { notifyEmail } from "@/lib/notify-email";
 import { fundedTierLabel, maxWithdrawalPercentForTier } from "@/lib/funded-tiers";
 
@@ -409,6 +409,42 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
     load();
   };
 
+  const handleReset = async (acc: Account) => {
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess.session?.access_token) return toast.error("Please sign in again");
+    setSubmitting(true);
+    const quote = await getBreachResetQuoteServer({ data: { accessToken: sess.session.access_token, accountId: acc.id } });
+    setSubmitting(false);
+    if (!quote.ok) return toast.error(quote.error ?? "Account not eligible");
+    if (!quote.kind) return toast.error("This account cannot be reset. Please purchase a new challenge.");
+    const label = quote.kind === "funded" ? `Funded ${quote.fundedTier}` : "Phase 2";
+    const feeText = quote.isUsd ? formatUSD(quote.feeInCurrency) : formatNaira(quote.feeInCurrency);
+    const sizeText = quote.isUsd ? formatUSD(quote.startingBalance) : formatNaira(quote.startingBalance);
+    const confirmed = window.confirm(
+      `Reset your ${label} account (${sizeText})?\n\nPay ${feeText} to reset once. After payment, you'll receive a fresh ${label} account of the same size.\nNote: this is a one-time reset per account.`,
+    );
+    if (!confirmed) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/initialize-payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sess.session.access_token}`,
+        },
+        body: JSON.stringify({ challenge_id: acc.challenge_id, reset_account_id: acc.id, currency: acc.currency === "USD" ? "USD" : "NGN" }),
+      });
+      const result = (await res.json().catch(() => ({}))) as { ok?: boolean; authorization_url?: string; error?: string };
+      setSubmitting(false);
+      if (!res.ok || !result.ok) return toast.error(result.error ?? "Could not start payment");
+      if (!result.authorization_url) return toast.error("Could not start payment");
+      window.location.href = result.authorization_url;
+    } catch (e) {
+      setSubmitting(false);
+      toast.error(e instanceof Error ? e.message : "Could not start payment");
+    }
+  };
+
   return (
     <div className="mt-4 space-y-4">
       {account.status === "breached" && account.breach_reason && (
@@ -417,6 +453,17 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
           <AlertDescription>
             <span className="font-display font-semibold">Account Breached</span>
             <p className="mt-1 text-sm">{account.breach_reason}</p>
+            {account.current_phase >= 2 && (
+              <Button
+                className="mt-3"
+                variant="secondary"
+                size="sm"
+                disabled={submitting}
+                onClick={() => handleReset(account)}
+              >
+                {account.current_phase >= 3 ? "Reset Funded Account" : "Reset Phase"}
+              </Button>
+            )}
           </AlertDescription>
         </Alert>
       )}

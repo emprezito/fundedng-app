@@ -4,6 +4,7 @@ import { sendEventEmail } from "@/lib/email.server";
 import { claimPoolAccount } from "@/lib/account-pool.server";
 import { getUSDRate } from "@/lib/exchange-rate.server";
 import { sendMetaEvent } from "@/lib/fb-capi.server";
+import { computeBreachReset, provisionBreachReset } from "@/lib/breach-reset.server";
 
 function clientIp(request: Request): string | undefined {
   return (
@@ -54,11 +55,13 @@ export const Route = createFileRoute("/api/verify-payment")({
             discount_code?: string;
             partner_promo_code?: string;
             original_amount?: string;
+            reset_account_id?: string;
             fbp?: string;
             fbc?: string;
           };
           const reference = body.reference?.trim();
           const challengeId = body.challenge_id?.trim();
+          const resetAccountId = body.reset_account_id?.trim() || null;
           if (!reference || !challengeId) {
             return Response.json(
               { error: "reference and challenge_id are required" },
@@ -130,9 +133,28 @@ export const Route = createFileRoute("/api/verify-payment")({
           } else {
             effectivePriceNaira = Number(challenge.price_naira);
           }
-          const discountPercent = Math.max(0, Math.min(100, Number(body.discount_percent ?? 0) || 0));
-          const discountCode = body.discount_code?.trim() || null;
-          const partnerPromoCode = body.partner_promo_code?.trim() || null;
+
+          // Breach Reset: fee is a fraction of the challenge price (phase 2) or
+          // account size (funded); no discount applies.
+          let resetQuote: Awaited<ReturnType<typeof computeBreachReset>> | null = null;
+          if (resetAccountId) {
+            const q = await computeBreachReset(resetAccountId);
+            if (!q.ok) return Response.json({ error: q.error }, { status: 400 });
+            if (!q.kind || q.account.user_id !== userId) {
+              return Response.json({ error: "Account not eligible for reset" }, { status: 400 });
+            }
+            resetQuote = q;
+            const rate = await getUSDRate();
+            effectivePriceNaira = q.isUsd
+              ? Math.ceil(q.feeInCurrency * rate)
+              : Math.round(q.feeInCurrency);
+          }
+
+          const discountPercent = resetAccountId
+            ? 0
+            : Math.max(0, Math.min(100, Number(body.discount_percent ?? 0) || 0));
+          const discountCode = resetAccountId ? null : (body.discount_code?.trim() || null);
+          const partnerPromoCode = resetAccountId ? null : (body.partner_promo_code?.trim() || null);
           const originalKobo = effectivePriceNaira * 100;
           const discountKobo = Math.floor(originalKobo * discountPercent / 100);
           const expectedKobo = Math.max(0, originalKobo - discountKobo);
@@ -161,6 +183,7 @@ export const Route = createFileRoute("/api/verify-payment")({
               amount_paid: paidKobo,
               status: "paid",
               paystack_reference: reference,
+              reset_account_id: resetAccountId,
             })
             .select("id")
             .single();
@@ -191,19 +214,40 @@ export const Route = createFileRoute("/api/verify-payment")({
              await supabaseAdmin.rpc("increment_discount_redemption" as never, { _code: discountCode } as never);
            }
 
-            // ---- 7. Try to deliver from pool automatically ----
-            const poolResult = await claimPoolAccount({
-              orderId: order.id,
-              accountSizeNgn: orderCurrency === "USD" ? 0 : challenge.account_size,
-              accountSizeUsd: orderCurrency === "USD" ? challenge.account_size : undefined,
-              currency: orderCurrency,
-              challengeId: challenge.id,
-              userId,
-              phase: 1,
-            }).catch((e) => {
-             console.error("[verify-payment] claimPoolAccount threw", e);
-             return null;
-           });
+             // ---- 7. Try to deliver from pool automatically ----
+            let poolResult: {
+              ok: boolean;
+              mt5Login?: string;
+              mt5Password?: string;
+              mt5Server?: string;
+              error?: string;
+            } | null = null;
+
+            if (resetAccountId) {
+              const r = await provisionBreachReset({
+                orderId: order.id,
+                accountId: resetAccountId,
+                userId,
+              }).catch((e) => {
+                console.error("[verify-payment] provisionBreachReset threw", e);
+                return { ok: false as const, error: e instanceof Error ? e.message : "Reset provisioning failed" };
+              });
+              poolResult = r.ok ? { ok: true, mt5Login: r.mt5Login } : { ok: false, error: r.error };
+            } else {
+              poolResult = await claimPoolAccount({
+                orderId: order.id,
+                accountSizeNgn: orderCurrency === "USD" ? 0 : challenge.account_size,
+                accountSizeUsd: orderCurrency === "USD" ? challenge.account_size : undefined,
+                currency: orderCurrency,
+                challengeId: challenge.id,
+                userId,
+                phase: 1,
+              }).catch((e) => {
+                console.error("[verify-payment] claimPoolAccount threw", e);
+                return null;
+              });
+            }
+
 
            // Fetch profile for Telegram / logs
            const { data: prof } = await supabaseAdmin
@@ -214,6 +258,7 @@ export const Route = createFileRoute("/api/verify-payment")({
            const traderName = prof?.full_name || "A trader";
            const chName = challenge.name;
            const chSize = challenge.account_size;
+           const currencySymbol = orderCurrency === "USD" ? "$" : "₦";
 
             if (poolResult?.ok) {
               // Verify the account was actually created
@@ -231,21 +276,22 @@ export const Route = createFileRoute("/api/verify-payment")({
                   } as never);
                 } catch (_) { /* ignore */ }
               } else {
-                await sendEventEmail({
-                  type: "mt5_delivered",
-                  orderId: order.id,
-                  mt5Login: poolResult.mt5Login,
-                  mt5Password: poolResult.mt5Password,
-                  mt5Server: poolResult.mt5Server,
-                }).catch((e) => console.error("[verify-payment] delivery email failed", e));
+                if (!resetAccountId) {
+                  await sendEventEmail({
+                    type: "mt5_delivered",
+                    orderId: order.id,
+                    mt5Login: poolResult.mt5Login,
+                    mt5Password: poolResult.mt5Password,
+                    mt5Server: poolResult.mt5Server,
+                  }).catch((e) => console.error("[verify-payment] delivery email failed", e));
 
-                const currencySymbol = orderCurrency === "USD" ? "$" : "₦";
-            try {
-                  await supabaseAdmin.rpc("send_telegram" as never, {
-                    p_message: `✅ <b>New Purchase — Auto-Delivered</b>\nTrader: ${traderName}\nChallenge: ${chName}\nSize: ${currencySymbol}${chSize?.toLocaleString("en-NG")}\nLogin: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}`,
-                  } as never);
-                } catch (e) {
-                  console.error("[verify-payment] telegram send failed", e);
+                  try {
+                    await supabaseAdmin.rpc("send_telegram" as never, {
+                      p_message: `✅ <b>New Purchase — Auto-Delivered</b>\nTrader: ${traderName}\nChallenge: ${chName}\nSize: ${currencySymbol}${chSize?.toLocaleString("en-NG")}\nLogin: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}`,
+                    } as never);
+                  } catch (e) {
+                    console.error("[verify-payment] telegram send failed", e);
+                  }
                 }
               }
             } else {

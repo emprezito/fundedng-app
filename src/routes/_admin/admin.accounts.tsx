@@ -168,6 +168,9 @@ function AccountsPage() {
               <div className="text-sm">{fmt(a.starting_balance)}</div>
               <div className="font-display text-sm text-gold">{a.current_phase >= 3 ? (a.funded_tier ? `Funded ${a.funded_tier}` : "Funded") : `Phase ${a.current_phase}`}</div>
               <Badge variant="outline" className="font-display">{a.status.toUpperCase()}</Badge>
+              {a.reset_used && (
+                <Badge variant="outline" className="border-violet-500/50 text-violet-500 text-[10px]">↺ Reset Used</Badge>
+              )}
               {a.monitor_paused && (
                 <Badge variant="outline" className="border-amber-500/50 text-amber-500 text-[10px]">⏸ Monitor Paused</Badge>
               )}

@@ -688,6 +688,7 @@ export type Database = {
           original_amount: number | null
           partner_promo_code: string | null
           paystack_reference: string | null
+          reset_account_id: string | null
           status: Database["public"]["Enums"]["order_status"]
           updated_at: string
           user_id: string
@@ -718,6 +719,7 @@ export type Database = {
           original_amount?: number | null
           partner_promo_code?: string | null
           paystack_reference?: string | null
+          reset_account_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           updated_at?: string
           user_id?: string
@@ -1224,6 +1226,7 @@ export type Database = {
           phase_rejected_at: string | null
           phase_rejected_reason: string | null
           provider: string
+          reset_used: boolean
           scalping_warnings: number
           starting_balance: number
           status: Database["public"]["Enums"]["account_status"]
@@ -1258,6 +1261,7 @@ export type Database = {
           phase_rejected_at?: string | null
           phase_rejected_reason?: string | null
           provider?: string
+          reset_used?: boolean
           scalping_warnings?: number
           starting_balance: number
           status?: Database["public"]["Enums"]["account_status"]
@@ -1292,6 +1296,7 @@ export type Database = {
           phase_rejected_at?: string | null
           phase_rejected_reason?: string | null
           provider?: string
+          reset_used?: boolean
           scalping_warnings?: number
           starting_balance?: number
           status?: Database["public"]["Enums"]["account_status"]

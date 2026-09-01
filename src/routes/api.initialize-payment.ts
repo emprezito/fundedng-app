@@ -4,6 +4,7 @@ import { sendEventEmail } from "@/lib/email.server";
 import { claimPoolAccount } from "@/lib/account-pool.server";
 import { getUSDRate } from "@/lib/exchange-rate.server";
 import { sendMetaEvent } from "@/lib/fb-capi.server";
+import { computeBreachReset, RESET_PHASE2_PERCENT, RESET_FUNDED_PERCENT } from "@/lib/breach-reset.server";
 
 function clientIp(request: Request): string | undefined {
   return (
@@ -39,7 +40,7 @@ export const Route = createFileRoute("/api/initialize-payment")({
           }
           const user = userData.user;
 
-          const body = (await request.json().catch(() => ({}))) as { challenge_id?: string; discount_code?: string; partner_promo_code?: string; currency?: string; exchange_rate?: number; event_id?: string; fbp?: string; fbc?: string };
+          const body = (await request.json().catch(() => ({}))) as { challenge_id?: string; discount_code?: string; partner_promo_code?: string; currency?: string; exchange_rate?: number; event_id?: string; fbp?: string; fbc?: string; reset_account_id?: string };
           const challengeId = body.challenge_id?.trim();
           if (!challengeId) {
             return Response.json({ error: "challenge_id is required" }, { status: 400 });
@@ -64,6 +65,23 @@ export const Route = createFileRoute("/api/initialize-payment")({
             effectivePriceNaira = Number(challenge.price_naira);
           }
 
+          // Breach Reset: override the amount with the reset fee.
+          let resetAccountId: string | null = null;
+          if (body.reset_account_id?.trim()) {
+            resetAccountId = body.reset_account_id.trim();
+            const reset = await computeBreachReset(resetAccountId);
+            if (!reset.ok) {
+              return Response.json({ error: reset.error }, { status: 400 });
+            }
+            if (!reset.kind || reset.account.user_id !== user.id) {
+              return Response.json({ error: "Account not eligible for reset" }, { status: 400 });
+            }
+            const rate = body.exchange_rate || await getUSDRate();
+            effectivePriceNaira = reset.isUsd
+              ? Math.ceil(reset.feeInCurrency * rate)
+              : Math.round(reset.feeInCurrency);
+          }
+
           // Prefer an explicit public site URL (set PUBLIC_SITE_URL secret to
           // e.g. https://fundedng.lovable.app) so Paystack never redirects to
           // localhost or a sandbox preview URL. Fall back to the browser's
@@ -86,46 +104,49 @@ export const Route = createFileRoute("/api/initialize-payment")({
           let promoPercent = 0;
           let partnerPercent = 0;
 
-          if (body.discount_code?.trim()) {
-            const code = body.discount_code.trim().toUpperCase();
-            const { data: promoRows } = await supabaseAdmin.rpc("validate_discount_code" as never, { _code: code, _challenge_id: challengeId } as never) as any;
-            const promo = Array.isArray(promoRows) ? promoRows[0] : null;
-            if (promo) {
-              discountCode = promo.code;
-              promoPercent = Number(promo.percent_off) || 0;
+          // Resets use a fixed fee — no discounts / partner promos apply.
+          if (resetAccountId === null) {
+            if (body.discount_code?.trim()) {
+              const code = body.discount_code.trim().toUpperCase();
+              const { data: promoRows } = await supabaseAdmin.rpc("validate_discount_code" as never, { _code: code, _challenge_id: challengeId } as never) as any;
+              const promo = Array.isArray(promoRows) ? promoRows[0] : null;
+              if (promo) {
+                discountCode = promo.code;
+                promoPercent = Number(promo.percent_off) || 0;
+              }
             }
-          }
 
-          if (body.partner_promo_code?.trim()) {
-            const code = body.partner_promo_code.trim().toUpperCase();
-            const { data: partner } = await supabaseAdmin
-              .from("partner_profiles")
-              .select("promo_code")
-              .eq("promo_code", code)
-              .eq("is_active", true)
-              .maybeSingle();
-            if (partner) {
-              partnerPromoCode = code;
-              partnerPercent = 15;
-            }
-          }
-
-          if (!partnerPercent) {
-            const { data: prof } = await supabaseAdmin
-              .from("profiles")
-              .select("partner_referred_by")
-              .eq("id", user.id)
-              .maybeSingle();
-            if (prof?.partner_referred_by) {
+            if (body.partner_promo_code?.trim()) {
+              const code = body.partner_promo_code.trim().toUpperCase();
               const { data: partner } = await supabaseAdmin
                 .from("partner_profiles")
                 .select("promo_code")
-                .eq("user_id", prof.partner_referred_by)
+                .eq("promo_code", code)
                 .eq("is_active", true)
                 .maybeSingle();
               if (partner) {
-                partnerPromoCode = partner.promo_code;
+                partnerPromoCode = code;
                 partnerPercent = 15;
+              }
+            }
+
+            if (!partnerPercent) {
+              const { data: prof } = await supabaseAdmin
+                .from("profiles")
+                .select("partner_referred_by")
+                .eq("id", user.id)
+                .maybeSingle();
+              if (prof?.partner_referred_by) {
+                const { data: partner } = await supabaseAdmin
+                  .from("partner_profiles")
+                  .select("promo_code")
+                  .eq("user_id", prof.partner_referred_by)
+                  .eq("is_active", true)
+                  .maybeSingle();
+                if (partner) {
+                  partnerPromoCode = partner.promo_code;
+                  partnerPercent = 15;
+                }
               }
             }
           }
@@ -166,6 +187,7 @@ export const Route = createFileRoute("/api/initialize-payment")({
                 status: "paid",
                 paystack_reference: reference,
                 currency: orderCurrency,
+                reset_account_id: resetAccountId,
               })
               .select("id")
               .single();
@@ -262,6 +284,7 @@ export const Route = createFileRoute("/api/initialize-payment")({
           });
           if (discountCode) callbackParams.set("dc", discountCode);
           if (partnerPromoCode) callbackParams.set("pp", partnerPromoCode);
+          if (resetAccountId) callbackParams.set("ra", resetAccountId);
 
           const initRes = await fetch("https://api-d.squadco.com/transaction/initiate", {
             method: "POST",

@@ -6,6 +6,7 @@ import { claimPoolAccount } from "@/lib/account-pool.server";
 import { sendTelegramWithButtons } from "@/lib/telegram.server";
 import { sendDiscordNotification } from "@/lib/discord.server";
 import { sendPushToUser } from "@/lib/push.server";
+import { computeBreachReset, provisionBreachReset } from "@/lib/breach-reset.server";
 
 const AddSocialProofInput = z.object({
   accessToken: z.string().min(1),
@@ -165,6 +166,51 @@ export const requestPayoutServer = createServerFn({ method: "POST" })
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Request failed";
       console.error("[requestPayoutServer] unexpected", msg);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Breach Reset — fetch reset quote for a breached account (trader-facing)
+// ---------------------------------------------------------------------------
+const BreachResetQuoteInput = z.object({
+  accessToken: z.string().min(1),
+  accountId: z.string().uuid(),
+});
+
+export const getBreachResetQuoteServer = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => BreachResetQuoteInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const auth = await assertUser(data.accessToken);
+      if (!auth.ok) return auth;
+
+      // Ensure the caller owns the account.
+      const { data: owner } = await supabaseAdmin
+        .from("trader_accounts")
+        .select("user_id")
+        .eq("id", data.accountId)
+        .maybeSingle();
+      if (!owner || owner.user_id !== auth.userId) {
+        return { ok: false as const, error: "Account not found" };
+      }
+
+      const quote = await computeBreachReset(data.accountId);
+      if (!quote.ok) return quote;
+
+      return {
+        ok: true as const,
+        kind: quote.kind,
+        currency: quote.currency,
+        isUsd: quote.isUsd,
+        feeInCurrency: quote.feeInCurrency,
+        startingBalance: quote.startingBalance,
+        currentPhase: quote.phase,
+        fundedTier: quote.fundedTier,
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Quote failed";
+      console.error("[getBreachResetQuoteServer] unexpected", msg);
       return { ok: false as const, error: msg };
     }
   });
