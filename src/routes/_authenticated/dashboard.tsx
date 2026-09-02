@@ -8,10 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { formatNaira, formatPercent, formatUSD, calculateBusinessDays, addBusinessDays } from "@/lib/utils";
 import { toast } from "sonner";
-import { LogOut, Plus, Trophy, TrendingUp, Activity, Bell, ShieldCheck, ShieldAlert, Sparkles, Check, Clock, XCircle, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
+import { LogOut, Plus, Trophy, TrendingUp, Activity, Bell, ShieldCheck, ShieldAlert, Sparkles, Check, Clock, XCircle, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, RefreshCcw } from "lucide-react";
 import { CertificateCard, type Certificate } from "@/components/certificates/CertificateCard";
 import { subscribeToPush } from "@/lib/push";
 import { NewUserInstallPrompt } from "@/components/NewUserInstallPrompt";
@@ -198,6 +198,14 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
   const [liveStatus, setLiveStatus] = useState<'connecting' | 'live' | 'disconnected'>('connecting');
   const [submitting, setSubmitting] = useState(false);
   const [ddCountdown, setDdCountdown] = useState("");
+  const [resetQuote, setResetQuote] = useState<{
+    account: Account;
+    kind: "phase2" | "funded";
+    label: string;
+    feeText: string;
+    sizeText: string;
+    isUsd: boolean;
+  } | null>(null);
   const lastEquityRef = useRef<number | null>(null);
   const accountRef = useRef(account);
   accountRef.current = account;
@@ -409,7 +417,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
     load();
   };
 
-  const handleReset = async (acc: Account) => {
+  const openResetDialog = async (acc: Account) => {
     const { data: sess } = await supabase.auth.getSession();
     if (!sess.session?.access_token) return toast.error("Please sign in again");
     setSubmitting(true);
@@ -418,12 +426,21 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
     if (!quote.ok) return toast.error(quote.error ?? "Account not eligible");
     if (!quote.kind) return toast.error("This account cannot be reset. Please purchase a new challenge.");
     const label = quote.kind === "funded" ? `Funded ${quote.fundedTier}` : "Phase 2";
-    const feeText = quote.isUsd ? formatUSD(quote.feeInCurrency) : formatNaira(quote.feeInCurrency);
-    const sizeText = quote.isUsd ? formatUSD(quote.startingBalance) : formatNaira(quote.startingBalance);
-    const confirmed = window.confirm(
-      `Reset your ${label} account (${sizeText})?\n\nPay ${feeText} to reset once. After payment, you'll receive a fresh ${label} account of the same size.\nNote: this is a one-time reset per account.`,
-    );
-    if (!confirmed) return;
+    setResetQuote({
+      account: acc,
+      kind: quote.kind,
+      label,
+      feeText: quote.isUsd ? formatUSD(quote.feeInCurrency) : formatNaira(quote.feeInCurrency),
+      sizeText: quote.isUsd ? formatUSD(quote.startingBalance) : formatNaira(quote.startingBalance),
+      isUsd: quote.isUsd,
+    });
+  };
+
+  const confirmReset = async () => {
+    if (!resetQuote) return;
+    const acc = resetQuote.account;
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess.session?.access_token) { setResetQuote(null); return toast.error("Please sign in again"); }
     setSubmitting(true);
     try {
       const res = await fetch("/api/initialize-payment", {
@@ -435,11 +452,13 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
         body: JSON.stringify({ challenge_id: acc.challenge_id, reset_account_id: acc.id, currency: acc.currency === "USD" ? "USD" : "NGN" }),
       });
       const result = (await res.json().catch(() => ({}))) as { ok?: boolean; authorization_url?: string; error?: string };
+      setResetQuote(null);
       setSubmitting(false);
       if (!res.ok || !result.ok) return toast.error(result.error ?? "Could not start payment");
       if (!result.authorization_url) return toast.error("Could not start payment");
       window.location.href = result.authorization_url;
     } catch (e) {
+      setResetQuote(null);
       setSubmitting(false);
       toast.error(e instanceof Error ? e.message : "Could not start payment");
     }
@@ -459,13 +478,53 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
                 variant="secondary"
                 size="sm"
                 disabled={submitting}
-                onClick={() => handleReset(account)}
+                onClick={() => openResetDialog(account)}
               >
                 {account.current_phase >= 3 ? "Reset Funded Account" : "Reset Phase"}
               </Button>
             )}
           </AlertDescription>
         </Alert>
+      )}
+
+      {resetQuote && (
+        <Dialog open={!!resetQuote} onOpenChange={(o) => { if (!o) setResetQuote(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <RefreshCcw className="h-5 w-5 text-primary" />
+                Reset {resetQuote.label} Account
+              </DialogTitle>
+              <DialogDescription>
+                Your {resetQuote.label} account ({resetQuote.sizeText}) has been breached. Pay the reset fee once and we'll provision a fresh {resetQuote.label} account of the same size.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Reset fee</span>
+                <span className="font-display text-lg font-bold text-primary">{resetQuote.feeText}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Account size</span>
+                <span className="font-display font-semibold">{resetQuote.sizeText}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Payment is processed securely via our checkout. After payment, a fresh {resetQuote.label} account will appear on your dashboard. Each account can be reset only once.
+            </p>
+
+            <DialogFooter>
+              <Button variant="outline" disabled={submitting} onClick={() => setResetQuote(null)}>
+                Not now
+              </Button>
+              <Button disabled={submitting} onClick={confirmReset}>
+                {submitting ? "Starting payment…" : `Pay ${resetQuote.feeText} & Reset`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {account.phase_rejected_reason && account.status !== "breached" && (
