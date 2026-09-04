@@ -10,6 +10,7 @@ import SocialProofGallery from "@/components/site/SocialProofGallery";
 import { Zap, ShieldCheck, Trophy, ArrowRight, Clock, Ban } from "lucide-react";
 import tradingChartHero from "@/assets/trading-chart-hero.jpg";
 import tradingChartHeroDark from "@/assets/trading-chart-hero-dark.jpg";
+import fundedngElement from "@/assets/fundedng-element.png";
 
 export const Route = createFileRoute("/")({ component: Index });
 
@@ -63,41 +64,58 @@ function Index() {
         />
         <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/50 to-background" />
         <div className="absolute inset-0 gradient-radial-primary opacity-40" />
-        <div className="relative mx-auto max-w-5xl px-4 py-24 text-center md:px-6 md:py-32">
-          <div className="font-display mb-6 text-xs tracking-[0.4em] text-primary opacity-80">
-            NIGERIA'S PROP TRADING FIRM
-          </div>
-          <h1 className="font-display text-4xl font-bold leading-[1.05] md:text-7xl lg:text-8xl">
-            Trade Big.
-            <br />
-            <span className="text-primary text-glow">Get Paid.</span>
-          </h1>
-          <p className="mx-auto mt-4 max-w-xl text-base font-display tracking-wide text-primary md:text-lg">
-            The Best Prop-Firm for 9ja traders wey sabi
-          </p>
-          <p className="mx-auto mt-3 max-w-xl text-sm text-muted-foreground md:text-base">
-            Pass two phases. Get funded. Withdraw 24 hours after your payout
-            is approved — no wahala.
-          </p>
-
-          <div className="mx-auto mt-12 grid max-w-2xl grid-cols-2 gap-6 md:grid-cols-4">
-            {[["24h","Payouts"],["80%","Profit Split"],["3","Simple Rules"],["₦2M","Max Funding"]].map(([v,l]) => (
-              <div key={l}>
-                <div className="font-display text-3xl font-bold text-primary">{v}</div>
-                <div className="mt-1 text-xs text-muted-foreground">{l}</div>
+        <div className="relative mx-auto max-w-6xl px-4 py-16 md:px-6 md:py-28 lg:py-32">
+          <div className="grid items-center gap-10 lg:grid-cols-2">
+            {/* Left: copy */}
+            <div className="lg:text-left animate-reveal-up">
+              <div className="font-display mb-6 text-xs tracking-[0.4em] text-primary opacity-80 lg:text-left text-center">
+                NIGERIA'S PROP TRADING FIRM
               </div>
-            ))}
-          </div>
+              <h1 className="font-display text-4xl font-bold leading-[1.05] md:text-6xl lg:text-7xl xl:text-8xl">
+                Trade our Capital
+                <br />
+                <span className="text-primary text-glow">and Get Funded in Naira.</span>
+              </h1>
+              <p className="mt-4 max-w-xl font-display text-base tracking-wide text-primary md:text-lg lg:text-left text-center">
+                The Best Prop-Firm for 9ja traders wey sabi
+              </p>
+              <p className="mt-3 max-w-xl text-sm text-muted-foreground md:text-base lg:text-left text-center">
+                Pass two phases. Get funded. Withdraw 24 hours after your payout
+                is approved — no wahala.
+              </p>
 
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-            <Link to="/buy">
-              <Button size="lg" className="font-display animate-pulse-glow">
-                Start Challenge <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-            <Link to="/auth/register">
-              <Button size="lg" variant="outline">Create Account</Button>
-            </Link>
+              <div className="mt-12 grid max-w-2xl grid-cols-2 gap-6 lg:grid-cols-4 lg:text-left text-center">
+                {[["24h","Payouts"],["80%","Profit Split"],["3","Simple Rules"],["₦2M","Max Funding"]].map(([v,l]) => (
+                  <div key={l}>
+                    <div className="font-display text-3xl font-bold text-primary">{v}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{l}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-10 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+                <Link to="/buy">
+                  <Button size="lg" className="font-display animate-pulse-glow">
+                    Start Challenge <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link to="/auth/register">
+                  <Button size="lg" variant="outline">Create Account</Button>
+                </Link>
+              </div>
+            </div>
+
+            {/* Right: animated phone/dashboard element (desktop only) */}
+            <div className="relative hidden items-center justify-center lg:flex">
+              <div className="absolute h-[520px] w-[340px] rounded-[2.5rem] bg-primary/30 blur-3xl" />
+              <img
+                src={fundedngElement}
+                alt="FundedNG funded account dashboard on a phone"
+                width={1024}
+                height={1536}
+                className="animate-float relative h-[480px] w-auto max-w-full object-contain drop-shadow-[0_40px_60px_rgba(0,0,0,0.45)]"
+              />
+            </div>
           </div>
         </div>
       </section>
