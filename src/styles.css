@@ -216,3 +216,45 @@
   to { opacity: 1; transform: translateY(0); }
 }
 .animate-reveal-up { animation: revealUp 0.8s ease forwards; }
+
+/* --- Hero: premium fintech (black + emerald) --- */
+
+/* Slower, persistence float for hero elements */
+@keyframes heroFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.animate-hero-float { animation: heroFloat 5.5s ease-in-out infinite; }
+.animate-hero-float-delay-1 { animation: heroFloat 6.5s ease-in-out 0.8s infinite; }
+.animate-hero-float-delay-2 { animation: heroFloat 6s ease-in-out 1.4s infinite; }
+
+/* Semi-transparent rotating globe */
+@keyframes heroGlobe {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-hero-globe { animation: heroGlobe 40s linear infinite; }
+
+/* Soft growing pulse behind the phone */
+@keyframes heroCorePulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.08); }
+}
+.animate-hero-core { animation: heroCorePulse 7s ease-in-out infinite; }
+
+/* Black glass card, thin emerald border, soft shadow */
+.hero-glass {
+  background: linear-gradient(160deg, rgba(8, 10, 10, 0.82), rgba(4, 5, 5, 0.72));
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  box-shadow:
+    0 24px 60px -24px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(52, 211, 153, 0.05),
+    0 0 40px -12px rgba(16, 185, 129, 0.25);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Minimal grain texture */
+.hero-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}

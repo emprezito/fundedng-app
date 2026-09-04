@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatNaira, formatUSD, formatCompactSize } from "@/lib/utils";
 import SocialProofGallery from "@/components/site/SocialProofGallery";
-import { Zap, ShieldCheck, Trophy, ArrowRight, Clock, Ban } from "lucide-react";
+import { Zap, ShieldCheck, Trophy, ArrowRight, Clock, Ban, Check } from "lucide-react";
 import tradingChartHero from "@/assets/trading-chart-hero.jpg";
 import tradingChartHeroDark from "@/assets/trading-chart-hero-dark.jpg";
 import fundedngElement from "@/assets/fundedng-element.png";
@@ -45,76 +45,185 @@ function Index() {
     <div className="min-h-screen">
       <PublicHeader />
 
-      {/* Hero */}
-      <section className="relative overflow-hidden border-b border-border">
-        <img
-          src={tradingChartHero}
-          alt="Live trading candlestick chart with upward trend"
-          width={1920}
-          height={1080}
-          className="absolute inset-0 h-full w-full object-cover opacity-60 dark:hidden"
-        />
-        <img
-          src={tradingChartHeroDark}
-          alt=""
-          aria-hidden="true"
-          width={1920}
-          height={1080}
-          className="absolute inset-0 hidden h-full w-full object-cover opacity-80 dark:block"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/50 to-background" />
-        <div className="absolute inset-0 gradient-radial-primary opacity-40" />
-        <div className="relative mx-auto max-w-6xl px-4 py-16 md:px-6 md:py-28 lg:py-32">
-          <div className="grid items-center gap-10 lg:grid-cols-2">
-            {/* Left: copy */}
-            <div className="lg:text-left animate-reveal-up">
-              <div className="font-display mb-6 text-xs tracking-[0.4em] text-primary opacity-80 lg:text-left text-center">
-                NIGERIA'S PROP TRADING FIRM
+      {/* Hero — premium fintech (black + emerald) */}
+      <section className="relative overflow-hidden bg-[#0a0c0b]">
+        {/* Grain texture */}
+        <div className="hero-grain pointer-events-none absolute inset-0 z-0 opacity-[0.02]" aria-hidden="true" />
+
+        {/* Radial emerald glow behind the right column */}
+        <div className="pointer-events-none absolute right-[10%] top-[45%] -translate-y-1/2 h-[680px] w-[680px] rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.12)_0%,transparent_70%)] blur-[100px]" aria-hidden="true" />
+
+        {/* Far-right blurred candlestick decorations (desktop only) */}
+        <div className="pointer-events-none absolute right-0 top-0 hidden h-full w-[35%] lg:block" aria-hidden="true">
+          {/* Green candles */}
+          <div className="absolute right-[60px] top-[18%] h-28 w-[5px] rounded-full bg-emerald-400/[0.12] blur-[1px]" />
+          <div className="absolute right-[60px] top-[18%] h-[72px] w-[5px] rounded-full bg-emerald-400/[0.22]" />
+          <div className="absolute right-[36px] top-[32%] h-36 w-[5px] rounded-full bg-emerald-500/[0.08] blur-[2px]" />
+          <div className="absolute right-[36px] top-[32%] h-20 w-[5px] rounded-full bg-emerald-400/[0.18]" />
+          <div className="absolute right-[14px] top-[12%] h-44 w-[5px] rounded-full bg-emerald-400/[0.06] blur-[3px]" />
+          {/* Red candle */}
+          <div className="absolute right-[82px] top-[42%] h-20 w-[5px] rounded-full bg-red-400/[0.1] blur-[1px]" />
+          <div className="absolute right-[82px] top-[42%] h-[48px] w-[5px] rounded-full bg-red-400/[0.18]" />
+        </div>
+
+        <div className="relative z-10 mx-auto max-w-[1400px] px-6 py-[120px]">
+          <div className="grid items-center gap-12 lg:grid-cols-12">
+
+            {/* ───── LEFT COLUMN — 55% ───── */}
+            <div className="lg:col-span-5 lg:col-start-1">
+              {/* Eyebrow */}
+              <div className="font-display mb-5 text-[11px] font-semibold uppercase tracking-[0.35em] text-emerald-400/70">
+                Nigeria's Naira Prop Trading Firm
               </div>
-              <h1 className="font-display text-4xl font-bold leading-[1.05] md:text-6xl lg:text-7xl xl:text-8xl">
-                Trade our Capital
+
+              {/* Headline — 3 lines */}
+              <h1 className="font-display text-[2.6rem] font-bold leading-[1.06] text-white md:text-6xl lg:text-7xl xl:text-[5.2rem]">
+                Trade Big.
                 <br />
-                <span className="text-primary text-glow">and Get Funded in Naira.</span>
+                <span
+                  className="text-emerald-400"
+                  style={{ textShadow: "0 0 50px rgba(52,211,153,0.35)" }}
+                >
+                  Get Funded.
+                </span>
+                <br />
+                In Naira.
               </h1>
-              <p className="mt-4 max-w-xl font-display text-base tracking-wide text-primary md:text-lg lg:text-left text-center">
-                The Best Prop-Firm for 9ja traders wey sabi
-              </p>
-              <p className="mt-3 max-w-xl text-sm text-muted-foreground md:text-base lg:text-left text-center">
-                Pass two phases. Get funded. Withdraw 24 hours after your payout
-                is approved — no wahala.
+
+              {/* Subheadline */}
+              <p className="mt-6 max-w-lg text-base leading-relaxed text-white/45 md:text-lg">
+                Pass two phases. Trade with funded capital. Withdraw payouts in
+                as fast as 24 hours.
               </p>
 
-              <div className="mt-12 grid max-w-2xl grid-cols-2 gap-6 lg:grid-cols-4 lg:text-left text-center">
-                {[["24h","Payouts"],["80%","Profit Split"],["3","Simple Rules"],["₦2M","Max Funding"]].map(([v,l]) => (
+              {/* CTAs — 72px gap from headline */}
+              <div className="mt-[72px] flex flex-wrap items-center gap-4">
+                <Link to="/buy">
+                  <Button
+                    size="lg"
+                    className="font-display text-[15px] font-semibold text-black bg-emerald-500 shadow-[0_0_32px_rgba(16,185,129,0.45)] hover:bg-emerald-400 hover:shadow-[0_0_48px_rgba(16,185,129,0.6)] transition-shadow"
+                  >
+                    Get Funded <ArrowRight className="ml-1.5 h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link to="/leaderboard">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="font-display text-[15px] border-white/[0.12] text-white/60 hover:border-emerald-500/40 hover:bg-white/[0.04] hover:text-white transition-colors"
+                  >
+                    View Dashboard
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Stats row */}
+              <div className="mt-10 grid max-w-lg grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-4">
+                {[
+                  ["24h", "Payouts"],
+                  ["80%", "Profit Split"],
+                  ["3", "Simple Rules"],
+                  ["₦2M", "Max Funding"],
+                ].map(([v, l]) => (
                   <div key={l}>
-                    <div className="font-display text-3xl font-bold text-primary">{v}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{l}</div>
+                    <div className="font-display text-2xl font-bold text-white">{v}</div>
+                    <div className="mt-1 text-xs text-white/35">{l}</div>
                   </div>
                 ))}
               </div>
-
-              <div className="mt-10 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
-                <Link to="/buy">
-                  <Button size="lg" className="font-display animate-pulse-glow">
-                    Start Challenge <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link to="/auth/register">
-                  <Button size="lg" variant="outline">Create Account</Button>
-                </Link>
-              </div>
             </div>
 
-            {/* Right: animated phone/dashboard element (desktop only) */}
-            <div className="relative hidden items-center justify-center lg:flex">
-              <div className="absolute h-[520px] w-[340px] rounded-[2.5rem] bg-primary/30 blur-3xl" />
-              <img
-                src={fundedngElement}
-                alt="FundedNG funded account dashboard on a phone"
-                width={1024}
-                height={1536}
-                className="animate-float relative h-[480px] w-auto max-w-full object-contain drop-shadow-[0_40px_60px_rgba(0,0,0,0.45)]"
+            {/* ───── RIGHT COLUMN — 45% ───── */}
+            <div className="relative hidden lg:col-span-6 lg:col-start-7 lg:flex lg:items-center lg:justify-center">
+
+              {/* Rotating globe wireframe */}
+              <div
+                className="animate-hero-globe absolute h-[380px] w-[380px] rounded-full border border-dashed border-emerald-400/10 opacity-40"
+                style={{
+                  background:
+                    "conic-gradient(from 0deg, transparent 0%, rgba(52,211,153,0.06) 25%, transparent 50%, rgba(52,211,153,0.04) 75%, transparent 100%)",
+                }}
+                aria-hidden="true"
               />
+
+              {/* Core green pulse behind phone */}
+              <div
+                className="animate-hero-core absolute h-[360px] w-[240px] rounded-[2.5rem] bg-emerald-500/[0.12] blur-[70px]"
+                aria-hidden="true"
+              />
+
+              {/* ── Phone ── */}
+              <div
+                className="animate-hero-float relative z-10"
+                style={{ transform: "rotate(8deg)" }}
+              >
+                {/* Rim glow */}
+                <div className="absolute -inset-[3px] rounded-[2.8rem] bg-gradient-to-br from-emerald-400/25 via-transparent to-emerald-500/10 blur-[6px]" />
+
+                {/* Phone body */}
+                <div className="relative h-[420px] w-[210px] overflow-hidden rounded-[2.2rem] border-[1.5px] border-white/[0.08] bg-[#0f1111] shadow-[0_70px_140px_-40px_rgba(0,0,0,0.95),0_0_80px_-20px_rgba(16,185,129,0.15)]">
+                  {/* Dynamic island */}
+                  <div className="absolute inset-x-0 top-0 z-20 mx-auto mt-1 h-[18px] w-24 rounded-b-2xl bg-black" />
+                  {/* Dashboard image */}
+                  <img
+                    src={fundedngElement}
+                    alt="FundedNG funded account dashboard"
+                    width={1024}
+                    height={1536}
+                    className="h-full w-full object-cover"
+                  />
+                  {/* Glass reflection */}
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.04] via-transparent to-transparent" />
+                </div>
+
+                {/* Glow underneath */}
+                <div className="absolute -bottom-10 left-1/2 h-[120px] w-[280px] -translate-x-1/2 rounded-full bg-emerald-500/20 blur-[50px]" />
+              </div>
+
+              {/* ── Floating glass cards ── */}
+              {/* Card 1 — top-left of phone */}
+              <div className="hero-glass animate-hero-float-delay-1 absolute left-[-180px] top-[40px] z-20 flex items-center gap-2 rounded-xl px-4 py-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15">
+                  <Check className="h-4 w-4 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="font-display text-[13px] font-bold text-white">₦2,842.75</div>
+                  <div className="text-[10px] text-white/40">Paid in 24 Hours</div>
+                </div>
+              </div>
+
+              {/* Card 2 — top-right */}
+              <div className="hero-glass animate-hero-float-delay-2 absolute right-[-60px] top-[30px] z-20 flex items-center gap-2 rounded-xl px-4 py-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15">
+                  <Trophy className="h-4 w-4 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="font-display text-[13px] font-bold text-white">₦1,000,000</div>
+                  <div className="text-[10px] text-white/40">Account Size</div>
+                </div>
+              </div>
+
+              {/* Card 3 — bottom-left */}
+              <div className="hero-glass animate-hero-float absolute left-[-140px] bottom-[60px] z-20 flex items-center gap-2 rounded-xl px-4 py-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15">
+                  <Zap className="h-4 w-4 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="font-display text-[13px] font-bold text-white">80%</div>
+                  <div className="text-[10px] text-white/40">Profit Split</div>
+                </div>
+              </div>
+
+              {/* Card 4 — bottom-right */}
+              <div className="hero-glass animate-hero-float-delay-1 absolute right-[-80px] bottom-[50px] z-20 flex items-center gap-2 rounded-xl px-4 py-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15">
+                  <Check className="h-4 w-4 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="font-display text-[13px] font-bold text-white">Trader Funded</div>
+                  <div className="text-[10px] text-emerald-400/80">✓</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
