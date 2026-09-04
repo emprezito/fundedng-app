@@ -556,7 +556,7 @@ function BuyPage() {
 
                       {/* Max Drawdown (Trailing) */}
                       <div className="flex items-center justify-between border-b border-border pb-2">
-                        <span className="text-muted-foreground">Max Drawdown (Trailing)</span>
+                        <span className="text-muted-foreground">Balance-based Drawdown</span>
                         <span className="font-display font-semibold">
                           {`${selected?.max_drawdown_percent ?? 0}%`}
                         </span>

@@ -11,9 +11,9 @@ export const Route = createFileRoute("/rules")({
   head: () => ({
     meta: [
       { title: "Trading Rules — FundedNG" },
-      { name: "description", content: "Full breakdown of FundedNG's prop trading rules: 20% max drawdown (balance trailing) with a 10% daily loss limit, 3-minute minimum hold time with 4-warning grace, weekly activity requirement, profit targets, payouts, and what's allowed." },
+      { name: "description", content: "Full breakdown of FundedNG's prop trading rules: 20% max drawdown (balance-based) with a 10% daily loss limit, 3-minute minimum hold time with 4-warning grace, weekly activity requirement, profit targets, payouts, and what's allowed." },
       { property: "og:title", content: "Trading Rules — FundedNG" },
-      { property: "og:description", content: "Just 3 main rules — 20% max drawdown (balance trailing) with a 10% daily loss limit, 3-minute minimum hold time with 4 warnings, and 3 days minimum trading. See the full rulebook here." },
+      { property: "og:description", content: "Just 3 main rules — 20% max drawdown (balance-based) with a 10% daily loss limit, 3-minute minimum hold time with 4 warnings, and 3 days minimum trading. See the full rulebook here." },
     ],
   }),
   component: RulesPage,
@@ -70,7 +70,7 @@ function RulesPage() {
                 <div className="font-display text-6xl font-bold text-primary/30">01</div>
                 <ShieldCheck className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="font-display mt-4 text-2xl font-bold">Max 20% Drawdown (Balance Trailing)</h3>
+              <h3 className="font-display mt-4 text-2xl font-bold">Max 20% Drawdown (Balance-based)</h3>
               <p className="mt-3 text-muted-foreground">
                 Your account balance must never drop more than 20% from the highest balance reached (trailing).
                 For example, if your account peaks at ₦220,000, balance must stay above ₦176,000.
@@ -148,11 +148,11 @@ function RulesPage() {
               </div>
               <h3 className="font-display mt-4 text-2xl font-bold">10% Daily Drawdown</h3>
               <p className="mt-3 text-muted-foreground">
-                Your account balance must not drop more than 10% in a single trading day, measured from the day's highest balance. In addition to the 20% total balance-trailing drawdown, this daily limit applies to all NGN challenges.
+                Your account balance must not drop more than 10% in a single trading day, measured from the day's highest balance. In addition to the 20% total balance-based drawdown, this daily limit applies to all NGN challenges.
               </p>
               <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
                 <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-chart-2" /> Resets each trading day at midnight UTC, based on closed balance.</li>
-                <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-chart-2" /> Combined with the 20% trailing max drawdown.</li>
+                <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-chart-2" /> Combined with the 20% balance-based max drawdown.</li>
               </ul>
             </div>
 
@@ -235,7 +235,7 @@ function RulesPage() {
               {
                 icon: AlertTriangle,
                 title: "What Counts As A Breach",
-                body: "A balance drop to 20% drawdown (trailing from the highest balance reached) is a breach — as is losing 10% in a single day from the day's highest balance. So is a 4th short-held trade, two short-held trades open at the same time, opening 3+ positions on a single symbol, averaging into a losing position, or any attempt to manipulate price, abuse evaluation-server latency, or coordinate trades across accounts.",
+                body: "A balance drop to 20% drawdown (balance-based from the highest balance reached) is a breach — as is losing 10% in a single day from the day's highest balance. So is a 4th short-held trade, two short-held trades open at the same time, opening 3+ positions on a single symbol, averaging into a losing position, or any attempt to manipulate price, abuse evaluation-server latency, or coordinate trades across accounts.",
               },
               {
                 icon: Ban,

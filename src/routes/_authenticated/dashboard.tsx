@@ -1392,7 +1392,7 @@ function DashboardPage() {
                 <ul className="mt-5 space-y-2 text-sm text-muted-foreground">
                   {[
                     "Instant FundedNG MT5 evaluation account",
-                    "Just 3 trading rules — 3-minute minimum hold time, 20% trailing drawdown, 3 min trading days (profits spread across them)",
+                    "Just 3 trading rules — 3-minute minimum hold time, 20% balance-based drawdown, 3 min trading days (profits spread across them)",
                     "80% profit split, paid in Naira",
                     "Full equity & drawdown tracking on this dashboard",
                   ].map((b) => (

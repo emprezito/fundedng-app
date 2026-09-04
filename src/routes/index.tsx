@@ -269,7 +269,7 @@ function Index() {
           <h2 className="font-display mt-4 text-4xl font-bold">Just 3 Rules. That's It.</h2>
           <div className="mt-12 grid gap-5 md:grid-cols-3">
             {[
-              { num: "01", title: "Max 20% Drawdown (Balance Trailing)", desc: "Your account balance must never drop more than 20% from the highest balance reached — floating losses don't count. Plus a 10% daily loss limit from the day's highest balance.", icon: ShieldCheck },
+              { num: "01", title: "Max 20% Drawdown (Balance-based)", desc: "Your account balance must never drop more than 20% from the highest balance reached — floating losses don't count. Plus a 10% daily loss limit from the day's highest balance.", icon: ShieldCheck },
               { num: "02", title: "No Tick Scalping", desc: "Each trade must be held at least 3 minutes — breached on the 4th detection. Two short trades at the same time is an instant breach.", icon: Clock },
               { num: "03", title: "Trade at Least Once a Week", desc: "At least 1 trade every calendar week to stay active. Profits across 3+ trading days per phase.", icon: Zap },
             ].map((r) => (
