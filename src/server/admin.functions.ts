@@ -1326,6 +1326,27 @@ export const advanceManualPhaseServer = createServerFn({ method: "POST" })
 
       if (insErr) return { ok: false as const, error: insErr.message };
 
+      const eventLabels: Record<string, { emoji: string; title: string; color: number }> = {
+        phase1_to_phase2: { emoji: "🎯", title: "Phase 2 Approved", color: 0x3498db },
+        phase2_to_funded: { emoji: "🏆", title: "New Funded Trader", color: 0x1ec97e },
+      };
+      const cfg = eventLabels[newEventType] ?? { emoji: "📌", title: "Phase Advanced", color: 0x95a5a6 };
+
+      await sendDiscordNotification(
+        `${cfg.emoji} **${cfg.title}**`,
+        [{
+          title: `${cfg.emoji} ${cfg.title} — ${(row as any).anonymized_name}`,
+          color: cfg.color,
+          fields: [
+            { name: "Trader", value: (row as any).anonymized_name, inline: true },
+            { name: "Account Size", value: `₦${Number((row as any).account_size).toLocaleString()}`, inline: true },
+            { name: "Challenge", value: (row as any).challenge_name || "Standard", inline: true },
+            ...(meta.mt5_login ? [{ name: "MT5", value: `\`${meta.mt5_login}\``, inline: true } as const] : []),
+          ],
+          timestamp: new Date().toISOString(),
+        }],
+      ).catch((e) => console.error("[advanceManualPhaseServer] discord failed", e));
+
       return { ok: true as const, certificate: newCertMeta };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed";
