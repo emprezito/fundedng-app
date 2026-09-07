@@ -19,7 +19,7 @@ import { PendingAccounts } from "@/components/dashboard/PendingAccounts";
 import { TradingAnalytics } from "@/components/dashboard/TradingAnalytics";
 import { LeaderboardActivityBanner } from "@/components/dashboard/LeaderboardActivityBanner";
 import { RefreshButton } from "@/components/ui/refresh-button";
-import { requestPayoutServer, sendPhaseRequestNotificationServer, requestPhase2AutoProvisionServer, requestFundedAutoProvisionServer, getBreachResetQuoteServer } from "@/server/admin.functions";
+import { requestPayoutServer, sendPhaseRequestNotificationServer, requestPhase2AutoProvisionServer, requestFundedAutoProvisionServer, getBreachResetQuoteServer, claimBreachResetServer } from "@/server/admin.functions";
 import { notifyEmail } from "@/lib/notify-email";
 import { fundedTierLabel, maxWithdrawalPercentForTier } from "@/lib/funded-tiers";
 
@@ -206,6 +206,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
     sizeText: string;
     isUsd: boolean;
   } | null>(null);
+  const [pendingReset, setPendingReset] = useState<"checking" | "none" | "pending">("checking");
   const lastEquityRef = useRef<number | null>(null);
   const accountRef = useRef(account);
   accountRef.current = account;
@@ -262,6 +263,23 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
   useEffect(() => {
     const last = phaseInfo[phaseInfo.length - 1];
     if (last) setSelectedPhase(last.key);
+  }, [account?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!account) { setPendingReset("checking"); return; }
+    setPendingReset("checking");
+    (async () => {
+      const { data } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("reset_account_id", account.id)
+        .in("status", ["paid"])
+        .limit(1);
+      if (cancelled) return;
+      setPendingReset(data && data.length > 0 ? "pending" : "none");
+    })();
+    return () => { cancelled = true; };
   }, [account?.id]);
 
   if (!account) return null;
@@ -464,6 +482,27 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
     }
   };
 
+  const claimReset = async () => {
+    if (!account) return;
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess.session?.access_token) return toast.error("Please sign in again");
+    setSubmitting(true);
+    try {
+      const res = await claimBreachResetServer({ data: { accessToken: sess.session.access_token, accountId: account.id } });
+      if (!res.ok) return toast.error(res.error ?? "Could not claim your reset account");
+      if (res.status === "delivered") {
+        toast.success(`Your reset account is ready — MT5 Login: ${res.mt5Login}`);
+      } else {
+        toast.success("Your reset is queued — admin has been notified and will deliver it shortly.");
+      }
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Claim failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="mt-4 space-y-4">
       {account.status === "breached" && account.breach_reason && (
@@ -472,7 +511,19 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
           <AlertDescription>
             <span className="font-display font-semibold">Account Breached</span>
             <p className="mt-1 text-sm">{account.breach_reason}</p>
-            {account.current_phase >= 2 && (
+            {account.current_phase >= 2 && pendingReset === "pending" && (
+              <Button
+                className="mt-3"
+                variant="secondary"
+                size="sm"
+                disabled={submitting}
+                onClick={claimReset}
+              >
+                <RefreshCcw className="mr-2 h-4 w-4" />
+                Claim your reset account
+              </Button>
+            )}
+            {account.current_phase >= 2 && pendingReset !== "pending" && (
               <Button
                 className="mt-3"
                 variant="secondary"

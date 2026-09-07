@@ -6,7 +6,7 @@ import { claimPoolAccount } from "@/lib/account-pool.server";
 import { sendTelegramWithButtons } from "@/lib/telegram.server";
 import { sendDiscordNotification } from "@/lib/discord.server";
 import { sendPushToUser } from "@/lib/push.server";
-import { computeBreachReset } from "@/lib/breach-reset.server";
+import { computeBreachReset, provisionBreachReset } from "@/lib/breach-reset.server";
 
 const AddSocialProofInput = z.object({
   accessToken: z.string().min(1),
@@ -211,6 +211,96 @@ export const getBreachResetQuoteServer = createServerFn({ method: "POST" })
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Quote failed";
       console.error("[getBreachResetQuoteServer] unexpected", msg);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+
+// ---------------------------------------------------------------------------
+// Claim breach reset — trader who already paid a reset retries provisioning
+// ---------------------------------------------------------------------------
+const ClaimBreachResetInput = z.object({
+  accessToken: z.string().min(1),
+  accountId: z.string().uuid(),
+});
+
+export const claimBreachResetServer = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => ClaimBreachResetInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const auth = await assertUser(data.accessToken);
+      if (!auth.ok) return auth;
+
+      // Ensure the caller owns the account.
+      const { data: owner } = await supabaseAdmin
+        .from("trader_accounts")
+        .select("user_id, current_phase")
+        .eq("id", data.accountId)
+        .maybeSingle();
+      if (!owner || owner.user_id !== auth.userId) {
+        return { ok: false as const, error: "Account not found" };
+      }
+
+      // Find the trader's most recent paid reset order for this account.
+      const { data: resetOrder } = await supabaseAdmin
+        .from("orders")
+        .select("id, challenge_id")
+        .eq("reset_account_id", data.accountId)
+        .eq("user_id", auth.userId)
+        .eq("status", "paid")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!resetOrder) {
+        return {
+          ok: false as const,
+          error: "No paid reset order found for this account. If you haven't paid yet, use the Reset button above.",
+        };
+      }
+
+      // Alread delivered? (a trader_account for this reset order exists)
+      const { data: existing } = await supabaseAdmin
+        .from("trader_accounts")
+        .select("id, mt5_login")
+        .eq("order_id", resetOrder.id)
+        .maybeSingle();
+      if (existing) {
+        return { ok: true as const, status: "delivered" as const, mt5Login: existing.mt5_login };
+      }
+
+      // Try to provision from the pool again (pool may have refilled).
+      const provisioned = await provisionBreachReset({
+        orderId: resetOrder.id,
+        accountId: data.accountId,
+        userId: auth.userId,
+      }).catch((e) => {
+        console.error("[claimBreachResetServer] provision failed", e);
+        return { ok: false as const, error: e instanceof Error ? e.message : "Provisioning failed" };
+      });
+
+      if (provisioned.ok) {
+        return { ok: true as const, status: "delivered" as const, mt5Login: provisioned.mt5Login };
+      }
+
+      // Pool still empty — queue a pending account_request so the admin's
+      // Pending Account Delivery tab picks it up for manual delivery.
+      await supabaseAdmin
+        .from("account_requests")
+        .upsert({
+          user_id: auth.userId,
+          order_id: resetOrder.id,
+          challenge_id: resetOrder.challenge_id,
+          status: "pending",
+        }, { onConflict: "order_id" })
+        .then(({ error }) => {
+          if (error) console.warn("[claimBreachResetServer] account_requests upsert failed:", error.message);
+        });
+
+      return { ok: true as const, status: "queued" as const };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Claim failed";
+      console.error("[claimBreachResetServer] unexpected", msg);
       return { ok: false as const, error: msg };
     }
   });

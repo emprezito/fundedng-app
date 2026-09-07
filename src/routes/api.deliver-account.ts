@@ -102,6 +102,23 @@ export const Route = createFileRoute("/api/deliver-account")({
             .eq("id", order.user_id)
             .single();
 
+          // A reset (order.reset_account_id) delivers the SAME phase/tier the
+          // trader was on when they breached (Phase 2 resets -> Phase 2 account,
+          // Funded resets -> Funded account at the same tier).
+          let resetPhase = 1;
+          let resetTier: number | null = null;
+          if (order.reset_account_id) {
+            const { data: resetAcct } = await supabaseAdmin
+              .from("trader_accounts")
+              .select("current_phase, funded_tier")
+              .eq("id", order.reset_account_id)
+              .maybeSingle();
+            if (resetAcct) {
+              resetPhase = Math.max(1, Number(resetAcct.current_phase ?? 1));
+              resetTier = resetPhase >= 3 ? Number(resetAcct.funded_tier ?? 1) : null;
+            }
+          }
+
           // Persist admin-entered credentials on trader_accounts.
           const { error: insertErr } = await supabaseAdmin.from("trader_accounts").insert({
             user_id: order.user_id,
@@ -116,7 +133,8 @@ export const Route = createFileRoute("/api/deliver-account")({
             currency: ch.currency || "NGN",
             starting_balance: ch.account_size,
             current_equity: ch.account_size,
-            current_phase: 1,
+            current_phase: resetPhase,
+            funded_tier: resetTier ?? 1,
             status: "active",
           });
           if (insertErr) {
@@ -127,6 +145,14 @@ export const Route = createFileRoute("/api/deliver-account")({
             .from("orders")
             .update({ status: "delivered" })
             .eq("id", order.id);
+
+          // Reset delivery: close the old breached account + mark reset_used.
+          if (order.reset_account_id) {
+            await supabaseAdmin
+              .from("trader_accounts")
+              .update({ status: "closed", reset_used: true } as never)
+              .eq("id", order.reset_account_id);
+          }
 
           await supabaseAdmin
             .from("account_requests")
