@@ -320,6 +320,8 @@ function useAdminDataHook() {
     if (status === "approved") notifyEmail({ type: "payout_approved", payoutId: p.id });
     if (status === "paid") {
       notifyEmail({ type: "payout_paid", payoutId: p.id });
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session?.access_token) return toast.error("Please sign in again");
       const res = await provisionPayoutServer({ data: { accessToken: sess.session.access_token, payoutId: p.id } });
       if (res?.ok) {
         toast.success("Payout paid — new account provisioned");

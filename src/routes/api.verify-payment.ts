@@ -230,7 +230,7 @@ export const Route = createFileRoute("/api/verify-payment")({
                 console.error("[verify-payment] provisionBreachReset threw", e);
                 return { ok: false as const, error: e instanceof Error ? e.message : "Reset provisioning failed" };
               });
-              poolResult = r.ok ? { ok: true, mt5Login: r.mt5Login } : { ok: false, error: r.error };
+              poolResult = r.ok ? { ok: true, mt5Login: r.mt5Login, mt5Server: r.mt5Server } : { ok: false, error: r.error };
             } else {
               poolResult = await claimPoolAccount({
                 orderId: order.id,
@@ -311,7 +311,15 @@ export const Route = createFileRoute("/api/verify-payment")({
              console.error("[verify-payment] purchase email failed", e),
            );
 
-           return Response.json({ ok: true, order_id: order.id, auto_delivered: poolResult?.ok ?? false, amount_naira: paidKobo / 100 });
+           return Response.json({
+             ok: true,
+             order_id: order.id,
+             auto_delivered: poolResult?.ok ?? false,
+             reset: !!resetAccountId,
+             mt5_login: poolResult?.mt5Login,
+             mt5_server: poolResult?.mt5Server,
+             amount_naira: paidKobo / 100,
+           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Verification failed";
           console.error("[verify-payment] unexpected", msg);

@@ -144,9 +144,8 @@ export const Route = createFileRoute("/api/telegram-webhook")({
 
               // 2. Provision new account from pool
               const traderUserId = account?.user_id ?? (payout as any)?.user_id;
-              const newOrderId = crypto.randomUUID();
               const poolResult = await claimPoolAccount({
-                orderId: newOrderId,
+                orderId: account?.order_id ?? null,
                 accountSizeNgn: currency === "USD" ? 0 : startingBalance,
                 accountSizeUsd: currency === "USD" ? startingBalance : undefined,
                 currency,

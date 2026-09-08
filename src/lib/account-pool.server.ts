@@ -52,7 +52,7 @@ async function notifyAdmins(title: string, message: string) {
 const MAX_CLAIM_RETRIES = 10;
 
 export async function claimPoolAccount(args: {
-  orderId: string;
+  orderId: string | null;
   accountSizeNgn: number;
   accountSizeUsd?: number;
   currency: string;
@@ -129,7 +129,7 @@ export async function claimPoolAccount(args: {
       if (attempt === 1) {
         const sizeLabel = isUsd ? `$${accountSize.toLocaleString("en-US")}` : `₦${accountSize.toLocaleString("en-NG")}`;
         const phaseLabel = phase === 1 ? "Phase 1" : phase === 2 ? "Phase 2" : "Funded";
-        const msg = `No ${sizeLabel} ${args.currency} ${phaseLabel} account in pool for order ${args.orderId.slice(0, 8)}…`;
+        const msg = `No ${sizeLabel} ${args.currency} ${phaseLabel} account in pool for order ${(args.orderId ?? "n/a").slice(0, 8)}…`;
         await notifyAdmins("⚠️ Account Pool Empty", msg);
         await sendAdminEmail(
           "Account Pool Empty — Manual Delivery Needed",
@@ -145,7 +145,7 @@ export async function claimPoolAccount(args: {
       .update({
         status: "assigned",
         assigned_at: new Date().toISOString(),
-        ...(args.phaseProgression ? {} : { assigned_order_id: args.orderId }),
+        ...(args.phaseProgression || !args.orderId ? {} : { assigned_order_id: args.orderId }),
       })
       .eq("id", poolRow.id)
       .eq("status", "available")
@@ -168,7 +168,7 @@ export async function claimPoolAccount(args: {
       .from("trader_accounts")
       .insert({
         user_id: args.userId,
-        order_id: args.orderId,
+        ...(args.orderId ? { order_id: args.orderId } : {}),
         challenge_id: args.challengeId,
         mt5_login: poolRow.mt5_login,
         mt5_password: poolRow.mt5_password,
@@ -207,7 +207,7 @@ export async function claimPoolAccount(args: {
       .eq("id", poolRow.id);
 
     // 5. Mark order delivered (skip for phase progression — order already delivered)
-    if (!args.phaseProgression) {
+    if (!args.phaseProgression && args.orderId) {
       await supabaseAdmin
         .from("orders")
         .update({ status: "delivered" })
@@ -274,6 +274,6 @@ export async function claimPoolAccount(args: {
   }
 
   // All retries exhausted — admins need to intervene
-  await notifyAdmins("⚠️ Account Pool Contention", `Exhausted retries claiming pool account for order ${args.orderId.slice(0, 8)}…`);
+  await notifyAdmins("⚠️ Account Pool Contention", `Exhausted retries claiming pool account for order ${(args.orderId ?? "n/a").slice(0, 8)}…`);
   return { ok: false, error: lastError };
 }

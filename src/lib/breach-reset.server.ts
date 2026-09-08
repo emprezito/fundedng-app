@@ -54,7 +54,10 @@ export async function computeBreachReset(accountId: string) {
   }
   const createdAt = account.created_at ? new Date(account.created_at).getTime() : NaN;
   if (!createdAt || Number.isNaN(createdAt) || createdAt < RESET_ELIGIBLE_FROM) {
-    return { ok: false as const, error: "This account is not eligible for a reset. Please purchase a new challenge." };
+    return {
+      ok: false as const,
+      error: "This account is not yet eligible for a reset. Resets are available for accounts provisioned on or after 1 Sep 2026. Please contact support if you believe this is a mistake.",
+    };
   }
 
   const phase = Number(account.current_phase);
@@ -104,7 +107,7 @@ export async function provisionBreachReset(args: {
   orderId: string;
   accountId: string;
   userId: string;
-}): Promise<{ ok: true; mt5Login: string } | { ok: false; error: string }> {
+}): Promise<{ ok: true; mt5Login: string; mt5Server: string } | { ok: false; error: string }> {
   const quote = await computeBreachReset(args.accountId);
   if (!quote.ok) return quote;
   if (!quote.kind) return { ok: false, error: "Account is not eligible for a reset" };
@@ -165,5 +168,5 @@ export async function provisionBreachReset(args: {
     url: "/dashboard",
   }).catch(() => {});
 
-  return { ok: true, mt5Login: poolResult.mt5Login };
+  return { ok: true, mt5Login: poolResult.mt5Login, mt5Server: poolResult.mt5Server };
 }

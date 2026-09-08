@@ -369,10 +369,10 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
         .update({ status: "closed" } as never)
         .eq("id", account.id);
 
-      // 2. Provision new account from pool
-      const newOrderId = crypto.randomUUID();
+      // 2. Provision new account from pool (reuse the original order so the
+      // trader_accounts.order_id FK to orders(id) stays valid)
       const poolResult = await claimPoolAccount({
-        orderId: newOrderId,
+        orderId: account?.order_id ?? null,
         accountSizeNgn: currency === "USD" ? 0 : startingBalance,
         accountSizeUsd: currency === "USD" ? startingBalance : undefined,
         currency,
@@ -419,10 +419,10 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
           nextTier,
         };
       } else {
-        // Pool empty — rollback old account
+        // Pool empty — rollback old account (it was a funded account).
         await supabaseAdmin
           .from("trader_accounts")
-          .update({ status: "active" } as never)
+          .update({ status: "funded" } as never)
           .eq("id", account.id);
 
         return { ok: false as const, error: "Pool empty — no accounts available" };
@@ -459,7 +459,7 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
         .from("trader_accounts")
         .select(`
           id, user_id, mt5_login, mt5_server, currency, starting_balance,
-          current_phase, funded_tier, challenge_id, status
+          current_phase, funded_tier, challenge_id, order_id, status
         `)
         .eq("id", data.traderAccountId)
         .maybeSingle();
@@ -497,9 +497,8 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
         .eq("id", account.id);
 
       // 2. Provision a fresh account from the funded pool at the next tier
-      const newOrderId = crypto.randomUUID();
       const poolResult = await claimPoolAccount({
-        orderId: newOrderId,
+        orderId: account.order_id ?? null,
         accountSizeNgn: currency === "USD" ? 0 : startingBalance,
         accountSizeUsd: currency === "USD" ? startingBalance : undefined,
         currency,
@@ -545,10 +544,10 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
           toTier: nextTier,
         };
       } else {
-        // Pool empty — rollback old account
+        // Pool empty — rollback old account (it was a funded account).
         await supabaseAdmin
           .from("trader_accounts")
-          .update({ status: "active" } as never)
+          .update({ status: "funded" } as never)
           .eq("id", account.id);
 
         return { ok: false as const, error: "Pool empty — no accounts available at Funded " + nextTier };

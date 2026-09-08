@@ -62,6 +62,10 @@ function PaymentCallback() {
           ok?: boolean;
           order_id?: string;
           amount_naira?: number;
+          auto_delivered?: boolean;
+          reset?: boolean;
+          mt5_login?: string;
+          mt5_server?: string;
           error?: string;
         };
         if (!res.ok || !result.ok || !result.order_id) {
@@ -70,9 +74,19 @@ function PaymentCallback() {
           return;
         }
         setOrderId(result.order_id);
-        setStatus("success");
-        setMessage("Payment confirmed! Your account is being prepared.");
-        toast.success("Payment confirmed!");
+        if (result.reset) {
+          setStatus("success");
+          if (result.auto_delivered && result.mt5_login) {
+            setMessage(`Your reset account is ready! MT5 Login: ${result.mt5_login}${result.mt5_server ? ` · Server: ${result.mt5_server}` : ""}. Check your dashboard for the password.`);
+          } else {
+            setMessage("Your reset payment is confirmed. No reset account was available just now, so we've queued your reset manually — you'll find the new login on your dashboard shortly.");
+          }
+          toast.success("Reset payment confirmed!");
+        } else {
+          setStatus("success");
+          setMessage("Payment confirmed! Your account is being prepared.");
+          toast.success("Payment confirmed!");
+        }
         trackPurchase(
           Number(result.amount_naira ?? 0) || (oa ? oa / 100 : 0),
           `purchase_${result.order_id}`,

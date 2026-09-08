@@ -523,7 +523,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
                 Claim your reset account
               </Button>
             )}
-            {account.current_phase >= 2 && pendingReset !== "pending" && (
+            {account.current_phase >= 2 && pendingReset === "none" && (
               <Button
                 className="mt-3"
                 variant="secondary"
