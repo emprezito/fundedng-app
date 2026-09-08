@@ -35,6 +35,19 @@ export interface MetaEventInput {
   sourceUrl?: string;
   clientIp?: string;
   userAgent?: string;
+  utm?: {
+    utm_source?: string;
+    utm_medium?: string;
+    utm_campaign?: string;
+    utm_content?: string;
+    utm_term?: string;
+  };
+}
+
+function filteredUtm(utm: NonNullable<MetaEventInput["utm"]>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(utm).filter(([, v]) => v),
+  ) as Record<string, string>;
 }
 
 /**
@@ -54,15 +67,15 @@ export async function sendMetaEvent(input: MetaEventInput): Promise<void> {
     hashValue(input.externalId),
   ]);
 
-  const customData = input.value != null
-    ? {
-        value: Number(input.value.toFixed(2)),
-        currency: input.currency || "NGN",
-        ...(input.eventName === "Purchase" && input.eventId
-          ? { order_id: input.eventId }
-          : {}),
-      }
-    : undefined;
+  const customData: Record<string, unknown> = {
+    ...(input.value != null
+      ? { value: Number(input.value.toFixed(2)), currency: input.currency || "NGN" }
+      : {}),
+    ...(input.eventName === "Purchase" && input.eventId
+      ? { order_id: input.eventId }
+      : {}),
+    ...(input.utm ? filteredUtm(input.utm) : {}),
+  };
 
   const userData: Record<string, unknown> = {
     em: em ? [em] : undefined,

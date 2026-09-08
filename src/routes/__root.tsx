@@ -4,7 +4,7 @@ import { NotificationsProvider } from "@/lib/notifications";
 import { Toaster } from "@/components/ui/sonner";
 import { ReferralCapture } from "@/components/ReferralCapture";
 import { initTikTokPixel, trackPageView as trackTikTokPageView, captureTtclid } from "@/lib/tiktok-pixel";
-import { initFbPixel, trackPageView as trackFbPageView, captureFbclid } from "@/lib/fb-pixel";
+import { initFbPixel, trackPageView as trackFbPageView, captureFbclid, captureUtmParams } from "@/lib/fb-pixel";
 import { useEffect } from "react";
 import appCss from "../styles.css?url";
 
@@ -111,6 +111,7 @@ function PageTracker() {
     trackTikTokPageView({ content_name: location.pathname, content_type: "webpage" });
     initFbPixel();
     captureFbclid();
+    captureUtmParams();
     trackFbPageView({ content_name: location.pathname, content_type: "webpage" });
   }, [location.pathname]);
   return null;

@@ -58,6 +58,13 @@ export const Route = createFileRoute("/api/verify-payment")({
             reset_account_id?: string;
             fbp?: string;
             fbc?: string;
+            utm?: {
+              utm_source?: string;
+              utm_medium?: string;
+              utm_campaign?: string;
+              utm_content?: string;
+              utm_term?: string;
+            };
           };
           const reference = body.reference?.trim();
           const challengeId = body.challenge_id?.trim();
@@ -203,6 +210,7 @@ export const Route = createFileRoute("/api/verify-payment")({
             externalId: userId,
             fbp: body.fbp,
             fbc: body.fbc,
+            utm: body.utm,
             sourceUrl: `${request.headers.get("origin") || new URL(request.url).origin}/payment/callback`,
             clientIp: clientIp(request),
             userAgent: request.headers.get("user-agent") ?? undefined,

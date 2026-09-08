@@ -15,7 +15,7 @@ import { Brand } from "@/components/site/Brand";
 import { ThemeToggle } from "@/components/site/ThemeToggle";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { AppSidebar, MobileBottomNav } from "@/components/site/AppShell";
-import { trackEvent, trackPurchase, generateEventId, getFbp, getFbc } from "@/lib/fb-pixel";
+import { trackEvent, trackPurchase, generateEventId, getFbp, getFbc, getUtmParams } from "@/lib/fb-pixel";
 
 export const Route = createFileRoute("/buy")({
   validateSearch: z.object({
@@ -292,7 +292,7 @@ function BuyPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-          body: JSON.stringify({ challenge_id: challengeId, discount_code: promoDiscount?.code, partner_promo_code: partnerCode, currency, exchange_rate: exchangeRate, event_id: eventId, fbp: getFbp(), fbc: getFbc() }),
+          body: JSON.stringify({ challenge_id: challengeId, discount_code: promoDiscount?.code, partner_promo_code: partnerCode, currency, exchange_rate: exchangeRate, event_id: eventId, fbp: getFbp(), fbc: getFbc(), utm: getUtmParams() }),
       });
       const result = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -311,7 +311,7 @@ function BuyPage() {
         setLoading(false);
         setConfirmOpen(false);
         toast.success("Challenge acquired! Your account is being prepared.");
-        trackPurchase(0, `purchase_${result.order_id}`);
+        trackPurchase(0, `purchase_${result.order_id}`, { ...getUtmParams() });
         fetch("/api/notify-new-purchase", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

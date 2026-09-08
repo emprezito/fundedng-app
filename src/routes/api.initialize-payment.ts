@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/initialize-payment")({
           }
           const user = userData.user;
 
-          const body = (await request.json().catch(() => ({}))) as { challenge_id?: string; discount_code?: string; partner_promo_code?: string; currency?: string; exchange_rate?: number; event_id?: string; fbp?: string; fbc?: string; reset_account_id?: string };
+          const body = (await request.json().catch(() => ({}))) as { challenge_id?: string; discount_code?: string; partner_promo_code?: string; currency?: string; exchange_rate?: number; event_id?: string; fbp?: string; fbc?: string; reset_account_id?: string; utm?: { utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string; utm_term?: string } };
           const challengeId = body.challenge_id?.trim();
           if (!challengeId) {
             return Response.json({ error: "challenge_id is required" }, { status: 400 });
@@ -166,6 +166,7 @@ export const Route = createFileRoute("/api/initialize-payment")({
             externalId: user.id,
             fbp: body.fbp,
             fbc: body.fbc,
+            utm: body.utm,
             sourceUrl: `${origin}/buy`,
             clientIp: clientIp(request),
             userAgent: request.headers.get("user-agent") ?? undefined,
@@ -207,6 +208,7 @@ export const Route = createFileRoute("/api/initialize-payment")({
               externalId: user.id,
               fbp: body.fbp,
               fbc: body.fbc,
+              utm: body.utm,
               sourceUrl: `${origin}/buy`,
               clientIp: clientIp(request),
               userAgent: request.headers.get("user-agent") ?? undefined,
