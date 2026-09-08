@@ -23,7 +23,7 @@ export const Route = createFileRoute("/buy")({
     challenge: z.string().optional(),
     currency: z.enum(["NGN", "USD"]).optional(),
     type: z.enum(["2step", "instant"]).optional(),
-    size: z.string().optional(),
+    size: z.union([z.string(), z.number()]).optional(),
     promo: z.string().optional(),
   }),
   component: BuyPage,

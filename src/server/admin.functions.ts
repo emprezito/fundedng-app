@@ -387,7 +387,7 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
         // 3. Correct phase + new funded tier on the new account
         await supabaseAdmin
           .from("trader_accounts")
-          .update({ current_phase: oldPhase, funded_tier: nextTier } as never)
+          .update({ status: "funded", current_phase: oldPhase, funded_tier: nextTier, trading_days: 0 } as never)
           .eq("id", poolResult.accountId);
 
         // 4. In-app notification
@@ -513,7 +513,7 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
         // 3. Correct phase + funded tier on the new account
         await supabaseAdmin
           .from("trader_accounts")
-          .update({ current_phase: 3, funded_tier: nextTier } as never)
+          .update({ status: "funded", current_phase: 3, funded_tier: nextTier, trading_days: 0 } as never)
           .eq("id", poolResult.accountId);
 
         // 4. In-app notification

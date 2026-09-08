@@ -1,4 +1,4 @@
-const PIXEL_ID = process.env.META_PIXEL_ID || "2351562142328029";
+const PIXEL_ID = process.env.META_PIXEL_ID || "1385026593609131";
 const TOKEN = process.env.META_PIXEL_TOKEN || "";
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v22.0";
 

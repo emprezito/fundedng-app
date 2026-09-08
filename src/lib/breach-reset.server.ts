@@ -144,12 +144,15 @@ export async function provisionBreachReset(args: {
     return { ok: false, error: "Pool empty — no account available for reset. Admin has been notified." };
   }
 
-  // 3. Set phase + funded tier on the new account (fallback to pool defaults).
+  // 3. Set phase + funded status/tier on the new account (funded branch only —
+  //    status: "active" + current_phase: 2 is correct for a phase-2 reset).
   await supabaseAdmin
     .from("trader_accounts")
     .update({
       current_phase: phase,
-      ...(quote.kind === "funded" ? { funded_tier: fundedTier } : {}),
+      ...(quote.kind === "funded"
+        ? { status: "funded", trading_days: 0, funded_tier: fundedTier }
+        : {}),
     } as never)
     .eq("id", poolResult.accountId);
 

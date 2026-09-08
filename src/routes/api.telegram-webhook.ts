@@ -166,7 +166,7 @@ export const Route = createFileRoute("/api/telegram-webhook")({
                 // 3. Correct phase + new funded tier
                 await supabaseAdmin
                   .from("trader_accounts")
-                  .update({ current_phase: oldPhase, funded_tier: nextTier } as never)
+                  .update({ status: "funded", current_phase: oldPhase, funded_tier: nextTier, trading_days: 0 } as never)
                   .eq("id", poolResult.accountId);
 
                 // 4. In-app notification

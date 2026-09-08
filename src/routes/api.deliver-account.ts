@@ -135,7 +135,10 @@ export const Route = createFileRoute("/api/deliver-account")({
             current_equity: ch.account_size,
             current_phase: resetPhase,
             funded_tier: resetTier ?? 1,
-            status: "active",
+            trading_days: 0,
+            // A funded reset must land as status: "funded" (a Phase 2 reset is
+            // correctly left as status: "active" + current_phase: 2).
+            status: resetPhase >= 3 ? "funded" : "active",
           });
           if (insertErr) {
             return Response.json({ error: insertErr.message }, { status: 500 });
