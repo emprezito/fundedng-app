@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { Brand } from "@/components/site/Brand";
@@ -10,14 +11,27 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { subscribeToPush } from "@/lib/push";
 import { notifyEmail } from "@/lib/notify-email";
 
-export const Route = createFileRoute("/auth/register")({ component: RegisterPage });
+export const Route = createFileRoute("/auth/register")({
+  validateSearch: z.object({ next: z.string().optional() }),
+  component: RegisterPage,
+});
+
+function safeNext(raw: string | undefined) {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  return raw;
+}
 
 function RegisterPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading } = useAuth();
+  const { next } = Route.useSearch();
+  const nextPath = safeNext(next);
   useEffect(() => {
-    if (!isLoading && isAuthenticated) navigate({ to: "/dashboard", replace: true });
-  }, [isAuthenticated, isLoading, navigate]);
+    if (!isLoading && isAuthenticated) {
+      if (nextPath) window.location.assign(nextPath);
+      else navigate({ to: "/dashboard", replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate, nextPath]);
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,7 +44,7 @@ function RegisterPage() {
       email: form.email,
       password: form.password,
       options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
+        emailRedirectTo: `${window.location.origin}${nextPath ?? "/dashboard"}`,
         data: { full_name: form.full_name, phone: form.phone },
       },
     });
@@ -47,6 +61,7 @@ function RegisterPage() {
     if (signUpData?.user?.id) {
       subscribeToPush(signUpData.user.id, supabase);
     }
+    if (nextPath) { window.location.assign(nextPath); return; }
     navigate({ to: "/dashboard" });
   };
 
@@ -83,7 +98,7 @@ function RegisterPage() {
           </form>
         </div>
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Already registered? <Link to="/auth/login" className="text-primary hover:underline">Sign in</Link>
+          Already registered? <Link to="/auth/login" search={next ? { next } : undefined} className="text-primary hover:underline">Sign in</Link>
         </p>
       </div>
     </div>

@@ -681,6 +681,7 @@ export type Database = {
           amount_paid: number
           challenge_id: string
           created_at: string
+          currency: string | null
           discount_amount: number
           discount_code: string | null
           discount_percent: number
@@ -692,11 +693,16 @@ export type Database = {
           status: Database["public"]["Enums"]["order_status"]
           updated_at: string
           user_id: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
         }
         Insert: {
           amount_paid: number
           challenge_id: string
           created_at?: string
+          currency?: string | null
           discount_amount?: number
           discount_code?: string | null
           discount_percent?: number
@@ -707,11 +713,16 @@ export type Database = {
           status?: Database["public"]["Enums"]["order_status"]
           updated_at?: string
           user_id: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
         }
         Update: {
           amount_paid?: number
           challenge_id?: string
           created_at?: string
+          currency?: string | null
           discount_amount?: number
           discount_code?: string | null
           discount_percent?: number
@@ -723,6 +734,10 @@ export type Database = {
           status?: Database["public"]["Enums"]["order_status"]
           updated_at?: string
           user_id?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
         }
         Relationships: [
           {

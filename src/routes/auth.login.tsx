@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { Brand } from "@/components/site/Brand";
@@ -8,16 +9,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-export const Route = createFileRoute("/auth/login")({ component: LoginPage });
+export const Route = createFileRoute("/auth/login")({
+  validateSearch: z.object({ next: z.string().optional() }),
+  component: LoginPage,
+});
+
+function safeNext(raw: string | undefined) {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  return raw;
+}
 
 function LoginPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, isAdmin } = useAuth();
+  const { next } = Route.useSearch();
+  const nextPath = safeNext(next);
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      navigate({ to: isAdmin ? "/admin" : "/dashboard", replace: true });
+      if (nextPath) window.location.assign(nextPath);
+      else navigate({ to: isAdmin ? "/admin" : "/dashboard", replace: true });
     }
-  }, [isAuthenticated, isLoading, isAdmin, navigate]);
+  }, [isAuthenticated, isLoading, isAdmin, navigate, nextPath]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -34,6 +46,7 @@ function LoginPage() {
       ? await supabase.from("user_roles").select("role").eq("user_id", uid)
       : { data: null };
     const isAdminUser = roles?.some((r) => r.role === "admin");
+    if (nextPath) { window.location.assign(nextPath); return; }
     navigate({ to: isAdminUser ? "/admin" : "/dashboard", replace: true });
   };
 
@@ -65,7 +78,7 @@ function LoginPage() {
           </form>
         </div>
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          New to FundedNG? <Link to="/auth/register" className="text-primary hover:underline">Create account</Link>
+          New to FundedNG? <Link to="/auth/register" search={next ? { next } : undefined} className="text-primary hover:underline">Create account</Link>
         </p>
       </div>
     </div>

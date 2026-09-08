@@ -189,6 +189,10 @@ export const Route = createFileRoute("/api/initialize-payment")({
                 paystack_reference: reference,
                 currency: orderCurrency,
                 reset_account_id: resetAccountId,
+                utm_source: body.utm?.utm_source ?? null,
+                utm_medium: body.utm?.utm_medium ?? null,
+                utm_campaign: body.utm?.utm_campaign ?? null,
+                utm_content: body.utm?.utm_content ?? null,
               })
               .select("id")
               .single();

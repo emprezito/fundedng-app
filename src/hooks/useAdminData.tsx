@@ -191,7 +191,7 @@ function useAdminDataHook() {
     const [profRes, chRes, ordRes, taRes] = await Promise.all([
       userIds.length ? supabase.from("profiles").select("id, full_name, bank_account_number, bank_name, bank_account_name, kyc_verified").in("id", userIds) : Promise.resolve({ data: [] as any[] }),
       challengeIds.length ? supabase.from("challenges").select("id, name, account_size, profit_target_percent, phase2_profit_target_percent, max_drawdown_percent, phases, drawdown_type").in("id", challengeIds) : Promise.resolve({ data: [] as any[] }),
-      orderIds.length ? supabase.from("orders").select("id, status, reset_account_id").in("id", orderIds) : Promise.resolve({ data: [] as any[] }),
+      orderIds.length ? supabase.from("orders").select("id, status, reset_account_id, utm_source, utm_medium, utm_campaign, utm_content").in("id", orderIds) : Promise.resolve({ data: [] as any[] }),
       accountIds.length ? supabase.from("trader_accounts").select("id, mt5_login, currency, starting_balance, monitor_paused, monitor_paused_reason").in("id", accountIds) : Promise.resolve({ data: [] as any[] }),
     ]);
     const profMap = new Map((profRes.data ?? []).map((p: any) => [p.id, p]));

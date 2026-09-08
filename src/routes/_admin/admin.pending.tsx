@@ -27,6 +27,13 @@ function PendingPage() {
               <div className="flex-1 min-w-[200px]">
                 <div className="font-semibold">{r.profiles?.full_name ?? "—"} {r.orders?.reset_account_id && <Badge variant="outline" className="ml-1 border-primary/40 text-primary text-[10px]">RESET</Badge>}</div>
                 <div className="text-xs text-muted-foreground">{r.challenges?.name} · {r.orders?.currency === "USD" ? formatUSD(r.challenges?.account_size ?? 0) : formatNaira(r.challenges?.account_size ?? 0)} {r.orders?.currency === "USD" && <Badge variant="outline" className="ml-1 border-blue-400/40 text-blue-500 text-[10px]">USD</Badge>}</div>
+                {r.orders?.utm_source && (
+                  <div className="mt-1 inline-flex items-center gap-1 flex-wrap">
+                    <Badge variant="outline" className="border-primary/30 text-primary text-[10px]">{r.orders.utm_source}{r.orders.utm_medium ? ` · ${r.orders.utm_medium}` : ""}</Badge>
+                    {r.orders.utm_campaign && <Badge variant="outline" className="text-[10px]">{r.orders.utm_campaign}</Badge>}
+                    {r.orders.utm_content && <Badge variant="outline" className="text-[10px]">{r.orders.utm_content}</Badge>}
+                  </div>
+                )}
               </div>
             <Badge variant="outline" className={`font-display ${r.status === "failed" ? "border-destructive/40 text-destructive" : "border-warning/40 text-warning"}`}>
               {r.status.toUpperCase()}

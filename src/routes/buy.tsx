@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -16,6 +16,7 @@ import { ThemeToggle } from "@/components/site/ThemeToggle";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { AppSidebar, MobileBottomNav } from "@/components/site/AppShell";
 import { trackEvent, trackPurchase, generateEventId, getFbp, getFbc, getUtmParams } from "@/lib/fb-pixel";
+import { QuickSignupDialog } from "@/components/QuickSignupDialog";
 
 export const Route = createFileRoute("/buy")({
   validateSearch: z.object({
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/buy")({
     currency: z.enum(["NGN", "USD"]).optional(),
     type: z.enum(["2step", "instant"]).optional(),
     size: z.string().optional(),
+    promo: z.string().optional(),
   }),
   component: BuyPage,
 });
@@ -87,6 +89,39 @@ function BuyPage() {
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   const [rateUpdatedAt, setRateUpdatedAt] = useState<string | null>(null);
   const [rateLoading, setRateLoading] = useState(false);
+  const [showSignup, setShowSignup] = useState(false);
+  const promoAppliedRef = useRef(false);
+
+  const nextHref = (() => {
+    const params = new URLSearchParams();
+    if (search.challenge) params.set("challenge", search.challenge);
+    if (search.currency) params.set("currency", search.currency);
+    if (search.type) params.set("type", search.type);
+    if (search.size) params.set("size", search.size);
+    if (search.promo) params.set("promo", search.promo);
+    const qs = params.toString();
+    return qs ? `/buy?${qs}` : "/buy";
+  })();
+
+  useEffect(() => {
+    if (!search.promo || promoAppliedRef.current) return;
+    if (!selected?.id) return;
+    const code = search.promo.trim().toUpperCase();
+    if (!code) return;
+    promoAppliedRef.current = true;
+    setPromoCode(code);
+    supabase.rpc("validate_discount_code" as any, { _code: code, _challenge_id: selected.id })
+      .then(({ data, error }) => {
+        const row = Array.isArray(data) ? data[0] : null;
+        if (!error && row) {
+          setPromoDiscount({ code: row.code, percent: Number(row.percent_off) });
+          toast.success(`${code} applied — ${row.percent_off}% off`);
+        } else {
+          setPromoDiscount(null);
+          toast.error(`${code} is invalid or expired`);
+        }
+      });
+  }, [search.promo, selected?.id]);
 
   useEffect(() => {
     supabase.from("challenges").select("*").eq("is_active", true).order("account_size")
@@ -204,7 +239,7 @@ function BuyPage() {
   const handleGetFunded = () => {
     if (!selectedSize) return;
     if (!isAuthenticated) {
-      navigate({ to: "/auth/register" });
+      setShowSignup(true);
       return;
     }
     setError("");
@@ -215,7 +250,7 @@ function BuyPage() {
   const openConfirm = () => {
     if (!selected) return setError("Select a challenge first");
     if (!isAuthenticated) {
-      navigate({ to: "/auth/register" });
+      setShowSignup(true);
       return;
     }
     setError("");
@@ -260,11 +295,14 @@ function BuyPage() {
 
   const handleBuy = async () => {
     if (!selected) return;
-    if (!user?.email) {
+    const { data: fresh } = await supabase.auth.getSession();
+    const accessToken = fresh.session?.access_token;
+    const email = fresh.session?.user?.email ?? user?.email;
+    if (!email) {
       setError("You need to be signed in with an email.");
       return;
     }
-    if (!session?.access_token) {
+    if (!accessToken) {
       setError("Your session expired. Please sign in again.");
       return;
     }
@@ -290,7 +328,7 @@ function BuyPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${accessToken}`,
         },
           body: JSON.stringify({ challenge_id: challengeId, discount_code: promoDiscount?.code, partner_promo_code: partnerCode, currency, exchange_rate: exchangeRate, event_id: eventId, fbp: getFbp(), fbc: getFbc(), utm: getUtmParams() }),
       });
@@ -373,6 +411,11 @@ function BuyPage() {
               <Badge variant="outline" className="font-display border-primary/40 text-primary">SELECT YOUR CHALLENGE</Badge>
               <h1 className="font-display mt-4 text-4xl font-bold">Get Funded Today</h1>
               <p className="mt-2 text-muted-foreground">Choose your challenge parameters and get funded to trade.</p>
+              {search.promo && (
+                <div className="font-display mx-auto mt-4 inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary">
+                  <span>{search.promo.trim().toUpperCase()} — {promoDiscount ? `${promoDiscount.percent}% OFF APPLIED` : "30% OFF • LIMITED TIME"}</span>
+                </div>
+              )}
             </div>
 
             <div className="mt-10 flex flex-col gap-8 lg:flex-row">
@@ -733,6 +776,19 @@ function BuyPage() {
           })()}
         </DialogContent>
       </Dialog>
+
+      <QuickSignupDialog
+        open={showSignup}
+        onOpenChange={setShowSignup}
+        next={nextHref}
+        onComplete={() => {
+          setTimeout(() => {
+            setError("");
+            setAgreed(false);
+            setConfirmOpen(true);
+          }, 100);
+        }}
+      />
     </div>
   );
 }
