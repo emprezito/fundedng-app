@@ -25,7 +25,13 @@ function PendingPage() {
         <div key={r.id} className="rounded-xl border border-border bg-card p-5">
 <div className="flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-[200px]">
-                <div className="font-semibold">{r.profiles?.full_name ?? "—"} {r.orders?.reset_account_id && <Badge variant="outline" className="ml-1 border-primary/40 text-primary text-[10px]">RESET</Badge>}</div>
+                <div className="font-semibold">{r.profiles?.full_name ?? "—"} {r.orders?.reset_account_id && <Badge variant="outline" className="ml-1 border-primary/40 text-primary text-[10px]">RESET</Badge>}
+                  {((r as any).provider_response?.kind === "payout" || (r as any).provider_response?.kind === "tier") && (
+                    <Badge variant="outline" className="ml-1 border-gold/40 text-gold text-[10px]" title="Funded rollover owed after a paid payout / tier advance">
+                      ROLLOVER{(r as any).provider_response?.funded_tier ? ` · FUNDED ${(r as any).provider_response.funded_tier}` : ""}
+                    </Badge>
+                  )}
+                </div>
                 <div className="text-xs text-muted-foreground">{r.challenges?.name} · {r.orders?.currency === "USD" ? formatUSD(r.challenges?.account_size ?? 0) : formatNaira(r.challenges?.account_size ?? 0)} {r.orders?.currency === "USD" && <Badge variant="outline" className="ml-1 border-blue-400/40 text-blue-500 text-[10px]">USD</Badge>}</div>
                 {r.orders?.utm_source && (
                   <div className="mt-1 inline-flex items-center gap-1 flex-wrap">
@@ -48,6 +54,11 @@ function PendingPage() {
               {r.failure_reason}
             </div>
           )}
+          {(r as any).provider_response?.kind === "payout" || (r as any).provider_response?.kind === "tier" ? (
+            <div className="mt-2 rounded-md border border-gold/30 bg-gold/5 p-2 text-xs text-muted-foreground">
+              Funded rollover owed (tier {(r as any).provider_response?.funded_tier ?? "—"}). Refill the pool for this size, then use <b>Advance Tier</b> on the trader's account to provision automatically — this ticket clears itself once the new account is delivered.
+            </div>
+          ) : null}
         </div>
       ))}
 

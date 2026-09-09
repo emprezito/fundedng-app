@@ -390,6 +390,22 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
           .update({ status: "funded", current_phase: oldPhase, funded_tier: nextTier, trading_days: 0 } as never)
           .eq("id", poolResult.accountId);
 
+        // 3b. Clear any outstanding delivery ticket for this order (rollover done).
+        if (account?.order_id) {
+          await supabaseAdmin
+            .from("account_requests")
+            .update({
+              status: "fulfilled",
+              fulfilled_at: new Date().toISOString(),
+              claimed_by: "pool",
+            })
+            .eq("order_id", account.order_id)
+            .in("status", ["pending", "failed"])
+            .then(({ error }) => {
+              if (error) console.warn("[provisionPayoutServer] account_requests fulfill failed:", error.message);
+            });
+        }
+
         // 4. In-app notification
         await supabaseAdmin
           .from("notifications")
@@ -425,7 +441,26 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
           .update({ status: "funded" } as never)
           .eq("id", account.id);
 
-        return { ok: false as const, error: "Pool empty — no accounts available" };
+        // Queue a pending delivery ticket so the admin's Pending tab shows a
+        // funded rollover account is still owed (refill the pool, then either
+        // retry the payout or use "Advance Tier" on the account).
+        if (account?.order_id) {
+          await supabaseAdmin
+            .from("account_requests")
+            .upsert({
+              user_id: traderUserId,
+              order_id: account.order_id,
+              challenge_id: challengeId ?? "",
+              status: "pending",
+              provider_response: { kind: "payout", phase: oldPhase, funded_tier: nextTier },
+            }, { onConflict: "order_id" })
+            .then(({ error }) => {
+              if (error) console.warn("[provisionPayoutServer] account_requests queue failed:", error.message);
+            });
+        }
+
+        const queuedNotice = account?.order_id ? " A delivery ticket was added to the admin Pending tab." : "";
+        return { ok: false as const, error: "Pool empty — no accounts available." + queuedNotice };
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Provision failed";
@@ -516,6 +551,22 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
           .update({ status: "funded", current_phase: 3, funded_tier: nextTier, trading_days: 0 } as never)
           .eq("id", poolResult.accountId);
 
+        // 3b. Clear any outstanding delivery ticket for this order (rollover done).
+        if (account.order_id) {
+          await supabaseAdmin
+            .from("account_requests")
+            .update({
+              status: "fulfilled",
+              fulfilled_at: new Date().toISOString(),
+              claimed_by: "pool",
+            })
+            .eq("order_id", account.order_id)
+            .in("status", ["pending", "failed"])
+            .then(({ error }) => {
+              if (error) console.warn("[provisionNextTierServer] account_requests fulfill failed:", error.message);
+            });
+        }
+
         // 4. In-app notification
         await supabaseAdmin
           .from("notifications")
@@ -550,7 +601,25 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
           .update({ status: "funded" } as never)
           .eq("id", account.id);
 
-        return { ok: false as const, error: "Pool empty — no accounts available at Funded " + nextTier };
+        // Queue a pending delivery ticket so the admin's Pending tab shows a
+        // funded rollover account is still owed (refill the pool, then retry).
+        if (account.order_id) {
+          await supabaseAdmin
+            .from("account_requests")
+            .upsert({
+              user_id: traderUserId,
+              order_id: account.order_id,
+              challenge_id: account.challenge_id ?? "",
+              status: "pending",
+              provider_response: { kind: "tier", phase: 3, funded_tier: nextTier },
+            }, { onConflict: "order_id" })
+            .then(({ error }) => {
+              if (error) console.warn("[provisionNextTierServer] account_requests queue failed:", error.message);
+            });
+        }
+
+        const queuedNotice = account.order_id ? " A delivery ticket was added to the admin Pending tab." : "";
+        return { ok: false as const, error: "Pool empty — no accounts available at Funded " + nextTier + "." + queuedNotice };
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Provision failed";
