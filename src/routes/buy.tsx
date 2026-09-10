@@ -66,7 +66,7 @@ function BuyPage() {
     const params = new URLSearchParams();
     if (search.challenge) params.set("challenge", search.challenge);
     if (search.category) params.set("category", search.category);
-    if (search.size) params.set("size", search.size);
+    if (search.size) params.set("size", String(search.size));
     if (search.promo) params.set("promo", search.promo);
     const qs = params.toString();
     return qs ? `/buy?${qs}` : "/buy";

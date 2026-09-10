@@ -6,7 +6,7 @@ import { claimPoolAccount } from "@/lib/account-pool.server";
 import { sendTelegramWithButtons } from "@/lib/telegram.server";
 import { sendDiscordNotification } from "@/lib/discord.server";
 import { sendPushToUser } from "@/lib/push.server";
-import { computeBreachReset, provisionBreachReset } from "@/lib/breach-reset.server";
+import { computeBreachReset, provisionBreachReset, getActiveResetCampaign } from "@/lib/breach-reset.server";
 
 const AddSocialProofInput = z.object({
   accessToken: z.string().min(1),
@@ -301,6 +301,90 @@ export const claimBreachResetServer = createServerFn({ method: "POST" })
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Claim failed";
       console.error("[claimBreachResetServer] unexpected", msg);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+
+// ---------------------------------------------------------------------------
+// Resettable accounts — profile-page listing of ALL the user's breached
+// accounts with per-account labels, fees, and current eligibility (which
+// reflects standing rules OR the active reset-campaign override). The active
+// campaign's end_at is returned once for the shared countdown banner.
+// ---------------------------------------------------------------------------
+const ListResettableAccountsInput = z.object({
+  accessToken: z.string().min(1),
+});
+
+export const listResettableAccountsServer = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => ListResettableAccountsInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const auth = await assertUser(data.accessToken);
+      if (!auth.ok) return auth;
+
+      const [accountRes, campaign] = await Promise.all([
+        supabaseAdmin
+          .from("trader_accounts")
+          .select("id, mt5_login, currency, starting_balance, current_phase, funded_tier, challenge_id")
+          .eq("user_id", auth.userId)
+          .eq("status", "breached")
+          .order("created_at", { ascending: false }),
+        getActiveResetCampaign(),
+      ]);
+      if (accountRes.error) {
+        return { ok: false as const, error: accountRes.error.message };
+      }
+      const accounts = (accountRes.data ?? []) as Array<{
+        id: string;
+        mt5_login: string | null;
+        currency: string | null;
+        starting_balance: number | null;
+        current_phase: number | null;
+        funded_tier: number | null;
+        challenge_id: string | null;
+      }>;
+
+      const challengeIds = Array.from(new Set(accounts.map((a) => a.challenge_id).filter(Boolean) as string[]));
+      const { data: challenges } = challengeIds.length
+        ? await supabaseAdmin.from("challenges").select("id, name").in("id", challengeIds)
+        : { data: [] as unknown[] };
+      const challengeMap = new Map((challenges ?? []).map((c: any) => [c.id, c.name]));
+
+      const rows = await Promise.all(
+        accounts.map(async (a) => {
+          const quote = await computeBreachReset(a.id);
+          const phase = Number(a.current_phase ?? 1);
+          const tier = Number(a.funded_tier ?? 1);
+          const isUsd = (a.currency ?? "NGN") === "USD";
+          const label = phase >= 3 ? `Funded ${tier}` : phase === 2 ? "Phase 2" : "Phase 1";
+          return {
+            id: a.id,
+            mt5Login: a.mt5_login,
+            challengeId: a.challenge_id,
+            label,
+            challengeName: a.challenge_id ? (challengeMap.get(a.challenge_id) ?? null) : null,
+            currency: a.currency ?? "NGN",
+            isUsd,
+            startingBalance: Number(a.starting_balance ?? 0),
+            currentPhase: phase,
+            fundedTier: phase >= 3 ? tier : undefined,
+            feeInCurrency: quote.ok ? quote.feeInCurrency : null,
+            eligible: quote.ok,
+            reason: quote.ok ? null : quote.error,
+          };
+        }),
+      );
+
+      return {
+        ok: true as const,
+        accounts: rows,
+        campaignActive: !!campaign,
+        campaignEndAt: campaign?.end_at ?? null,
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "List failed";
+      console.error("[listResettableAccountsServer] unexpected", msg);
       return { ok: false as const, error: msg };
     }
   });
@@ -1158,6 +1242,7 @@ export const markBreachedServer = createServerFn({ method: "POST" })
         .update({
           status: "breached",
           breach_reason: data.reason.trim(),
+          breached_at: new Date().toISOString(),
         } as never)
         .eq("id", data.accountId);
       if (error) return { ok: false as const, error: error.message };

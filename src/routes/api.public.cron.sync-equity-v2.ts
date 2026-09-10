@@ -95,7 +95,7 @@ async function refreshTradingDays(accountId: string) {
           }
           if (concurrent.length >= 3) {
             const breachReason = `Position stacking violation (server-side): ${concurrent.length} simultaneous positions detected on ${symbol} (tickets #${concurrent.join(", #")}). Maximum 2 open positions per symbol per account — instant breach.`;
-            await supabaseAdmin.from("trader_accounts").update({ status: "breached", breach_reason: breachReason }).eq("id", accountId);
+            await supabaseAdmin.from("trader_accounts").update({ status: "breached", breach_reason: breachReason, breached_at: new Date().toISOString() }).eq("id", accountId);
             const { data: acctInfo } = await supabaseAdmin.from("trader_accounts").select("user_id, mt5_login").eq("id", accountId).single();
             if (acctInfo) {
               await supabaseAdmin.from("notifications").insert({ user_id: acctInfo.user_id, title: "⚠️ Account Breached — Position Violation", message: `You had ${concurrent.length} positions open on ${symbol} at the same time (max 2 per symbol). The account has been breached.`, type: "breach" });
@@ -308,6 +308,7 @@ async function syncEquityV2(request: Request) {
             status: "breached",
             breach_reason: breachReason,
             scalping_warnings: 0,
+            breached_at: new Date().toISOString(),
           })
           .eq("id", account_id);
 
@@ -634,6 +635,7 @@ async function syncEquityV2(request: Request) {
           status: "breached",
           breach_reason: breachReason,
           scalping_warnings: 0,
+          breached_at: new Date().toISOString(),
         })
         .eq("id", account_id);
 

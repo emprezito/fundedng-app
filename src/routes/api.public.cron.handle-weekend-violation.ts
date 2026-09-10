@@ -96,6 +96,7 @@ async function handleWeekendViolation(request: Request) {
     .update({
       status: "breached",
       breach_reason: breachReason,
+      breached_at: new Date().toISOString(),
     })
     .eq("id", account_id);
 

@@ -510,7 +510,7 @@ function useAdminDataHook() {
     if (reason.length < 3) { toast.error("Please write a breach reason (min 3 chars)."); return; }
     setBreaching(true);
     try {
-      const { error } = await supabase.from("trader_accounts").update({ status: "breached", breach_reason: reason, phase_rejected_reason: null, phase_rejected_at: null } as never).eq("id", breachTarget.id);
+      const { error } = await supabase.from("trader_accounts").update({ status: "breached", breach_reason: reason, phase_rejected_reason: null, phase_rejected_at: null, breached_at: new Date().toISOString() } as never).eq("id", breachTarget.id);
       if (error) { toast.error(error.message); return; }
       const adminName = (profile?.full_name && profile.full_name.trim()) || (user?.email ?? null);
       await supabase.from("breach_audit_log").insert({ trader_account_id: breachTarget.id, user_id: breachTarget.user_id, admin_id: user?.id ?? null, admin_name: adminName, admin_email: user?.email ?? null, reason, mt5_login: breachTarget.mt5_login ?? null } as never).then(({ error: e }) => { if (e) console.error("[breach audit log] insert failed", e.message); });

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { listNigerianBanks, verifyKycPaystack } from "@/server/kyc.functions";
-import { LayoutDashboard, ShieldCheck, ShoppingBag, LogOut, BarChart3, LifeBuoy, ShieldAlert, Landmark } from "lucide-react";
+import { listResettableAccountsServer } from "@/server/admin.functions";
+import { formatNaira, formatUSD } from "@/lib/utils";
+import { LayoutDashboard, ShieldCheck, ShoppingBag, LogOut, BarChart3, LifeBuoy, ShieldAlert, Landmark, RefreshCcw } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/profile")({ component: ProfilePage });
 
@@ -96,6 +98,73 @@ function ProfilePage() {
     }
   };
 
+  // --- Reset a breached account ---
+  type ResetRow = {
+    id: string; mt5Login: string | null; challengeId: string | null; label: string;
+    challengeName: string | null; currency: string; isUsd: boolean;
+    startingBalance: number; currentPhase: number; fundedTier: number | undefined;
+    feeInCurrency: number | null; eligible: boolean; reason: string | null;
+  };
+  const [resettable, setResettable] = useState<{ accounts: ResetRow[]; campaignActive: boolean; campaignEndAt: string | null } | null>(null);
+  const [loadingResettable, setLoadingResettable] = useState(true);
+  const [resetCountdown, setResetCountdown] = useState("--:--:--");
+  const [confirmingAccountId, setConfirmingAccountId] = useState<string | null>(null);
+
+  const loadResettable = useCallback(async () => {
+    try {
+      setLoadingResettable(true);
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) return;
+      const res = await listResettableAccountsServer({ data: { accessToken: sess.session.access_token } });
+      if (!res.ok) return;
+      setResettable({
+        accounts: (res as any).accounts ?? [],
+        campaignActive: !!(res as any).campaignActive,
+        campaignEndAt: (res as any).campaignEndAt ?? null,
+      });
+    } finally {
+      setLoadingResettable(false);
+    }
+  }, []);
+
+  useEffect(() => { loadResettable(); }, [loadResettable]);
+
+  useEffect(() => {
+    if (!resettable?.campaignEndAt) return;
+    const tick = () => {
+      const diff = Math.max(0, new Date(resettable.campaignEndAt!).getTime() - Date.now());
+      if (diff <= 0) { setResetCountdown("ended"); return; }
+      const h = String(Math.floor(diff / 3600000)).padStart(2, "0");
+      const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, "0");
+      const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
+      setResetCountdown(`${h}:${m}:${s}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [resettable?.campaignEndAt]);
+
+  const confirmReset = async (row: ResetRow) => {
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess.session) { toast.error("Please sign in again"); return; }
+    setConfirmingAccountId(row.id);
+    try {
+      const res = await fetch("/api/initialize-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session.access_token}` },
+        body: JSON.stringify({ challenge_id: row.challengeId, reset_account_id: row.id, currency: row.isUsd ? "USD" : "NGN" }),
+      });
+      const result = (await res.json().catch(() => ({}))) as { ok?: boolean; authorization_url?: string; error?: string };
+      if (!res.ok || !result.ok) return toast.error(result.error ?? "Could not start payment");
+      if (!result.authorization_url) return toast.error("Could not start payment");
+      window.location.href = result.authorization_url;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not start payment");
+    } finally {
+      setConfirmingAccountId(null);
+    }
+  };
+
   const initials = (profile?.full_name || user?.email || "U")
     .split(" ")
     .map((s) => s[0])
@@ -166,7 +235,74 @@ function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* KYC — Bank Account Verification */}
+      {/* Reset a breached account */}
+        {(!loadingResettable && resettable?.accounts && resettable.accounts.length > 0) && (
+          <div className="mt-6 rounded-2xl border border-border bg-card p-6">
+            <div className="flex items-start gap-2">
+              <RefreshCcw className="mt-0.5 h-4 w-4 text-primary" />
+              <div className="min-w-0 flex-1">
+                <h3 className="font-display text-base font-semibold">Reset a breached account</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {resettable?.campaignActive
+                    ? "Special reset window open — the normal one-reset-per-account and creation-date restrictions are suspended for all accounts while this window is active."
+                    : "Each account can be reset once. Resets are available for accounts created after Sep 1, 2026."}
+                </p>
+              </div>
+            </div>
+
+            {resettable?.campaignActive && resetCountdown !== "ended" && (
+              <div className="mt-4 rounded-xl border border-warning/40 bg-warning/5 p-4">
+                <p className="text-xs font-medium text-warning">
+                  ⏳ Special reset window ends in <span className="font-mono font-bold text-foreground">{resetCountdown}</span> — resets normally restricted to accounts created after Sep 1, 2026 and one per account are open to everyone during this window.
+                </p>
+              </div>
+            )}
+            {resettable?.campaignActive && resetCountdown === "ended" && (
+              <div className="mt-4 rounded-xl border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+                The special reset window has ended — standard reset rules apply again.
+              </div>
+            )}
+
+            <div className="mt-4 space-y-3">
+              {resettable!.accounts.map((row) => (
+                <div key={row.id} className={`rounded-xl border ${row.eligible ? "border-border bg-background" : "border-border/50 bg-muted/10 opacity-70"} p-4`}>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-display text-sm font-semibold">{row.label}</span>
+                        {row.mt5Login && <span className="font-mono text-xs text-muted-foreground">MT5 {row.mt5Login}</span>}
+                        {row.challengeName && <Badge variant="secondary" className="hidden h-5 text-[10px] sm:inline-flex">{row.challengeName}</Badge>}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
+                        <span>Size: {row.isUsd ? formatUSD(row.startingBalance) : formatNaira(row.startingBalance)}</span>
+                        {row.eligible && row.feeInCurrency !== null && (
+                          <span>Reset fee: <span className="font-semibold text-primary">{row.isUsd ? formatUSD(row.feeInCurrency) : formatNaira(row.feeInCurrency)}</span></span>
+                        )}
+                      </div>
+                      {!row.eligible && row.reason && (
+                        <p className="mt-2 rounded-md bg-destructive/5 px-2 py-1 text-[11px] text-destructive">{row.reason}</p>
+                      )}
+                    </div>
+                    {row.eligible && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={confirmingAccountId === row.id}
+                        onClick={() => confirmReset(row)}
+                        className="shrink-0 self-start"
+                      >
+                        <RefreshCcw className="mr-1 h-3.5 w-3.5" />
+                        {confirmingAccountId === row.id ? "Starting payment…" : "Pay & Reset"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* KYC — Bank Account Verification */}
       <div className={`mt-6 rounded-2xl border p-6 ${kycVerified ? "border-primary/30 bg-primary/5" : "border-warning/40 bg-warning/5"}`}>
         <div className="flex items-start justify-between gap-4">
           <div>

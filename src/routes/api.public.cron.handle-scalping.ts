@@ -130,6 +130,7 @@ async function handleScalping(request: Request) {
         status: "breached",
         breach_reason: breachReason,
         scalping_warnings: 0,
+        breached_at: new Date().toISOString(),
       })
       .eq("id", account_id);
 
@@ -191,6 +192,7 @@ async function handleScalping(request: Request) {
         status: "breached",
         breach_reason: breachReason,
         scalping_warnings: 0,
+        breached_at: new Date().toISOString(),
       })
       .eq("id", account_id);
 

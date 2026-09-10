@@ -443,7 +443,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
     setSubmitting(false);
     if (!quote.ok) return toast.error(quote.error ?? "Account not eligible");
     if (!quote.kind) return toast.error("This account cannot be reset. Please purchase a new challenge.");
-    const label = quote.kind === "funded" ? `Funded ${quote.fundedTier}` : "Phase 2";
+    const label = quote.kind === "funded" ? `Funded ${quote.fundedTier}` : quote.kind === "phase2" ? "Phase 2" : "Phase 1";
     setResetQuote({
       account: acc,
       kind: quote.kind,
@@ -511,7 +511,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
           <AlertDescription>
             <span className="font-display font-semibold">Account Breached</span>
             <p className="mt-1 text-sm">{account.breach_reason}</p>
-            {account.current_phase >= 2 && pendingReset === "pending" && (
+            {pendingReset === "pending" && (
               <Button
                 className="mt-3"
                 variant="secondary"
@@ -523,7 +523,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
                 Claim your reset account
               </Button>
             )}
-            {account.current_phase >= 2 && pendingReset === "none" && (
+            {pendingReset === "none" && (
               <Button
                 className="mt-3"
                 variant="secondary"
@@ -531,7 +531,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
                 disabled={submitting}
                 onClick={() => openResetDialog(account)}
               >
-                {account.current_phase >= 3 ? "Reset Funded Account" : "Reset Phase"}
+                {account.current_phase >= 3 ? "Reset Funded Account" : `Reset Phase ${account.current_phase}`}
               </Button>
             )}
           </AlertDescription>

@@ -9,26 +9,56 @@ import { sendPushToUser } from "@/lib/push.server";
  * paid-order delivery (verify) paths.
  *
  * Rules:
- *   - Phase 1 breach  -> no reset (trader must buy a fresh challenge).
+ *   - Phase 1 breach  -> reset fee = 20% of the challenge price; new Phase 1
+ *                        account provisioned from the phase-1 pool (status
+ *                        "active" — claimPoolAccount's default).
  *   - Phase 2 breach  -> reset fee = 30% of the challenge price; new Phase 2
  *                        account provisioned from the phase-2 pool (same size).
- *   - Funded breach   -> reset fee = 60% of the account size (starting_balance);
- *                        new Funded account provisioned from the funded pool at
- *                        the SAME tier and size.
+ *   - Funded breach   -> reset fee = 60% of the challenge price; new Funded
+ *                        account provisioned from the funded pool at the SAME
+ *                        tier and size.
  *   - Each account can be reset at most once (reset_used flag).
+ *
+ * Standing eligibility (enforced when NO reset campaign is active):
+ *   - account provisioned on/after RESET_ELIGIBLE_FROM
+ *   - reset_used = FALSE
+ * While a reset campaign is active (now() between start_at/end_at) BOTH
+ * standing checks are skipped at reset-request time — the campaign only
+ * overrides the check, never the flag, so a reset performed during a campaign
+ * still sets reset_used on the new account and is restricted again afterwards.
  *
  * The amount returned is in the ACCOUNT's currency (NGN or USD) for display;
  * the naira fee used for Squad checkout is derived from it.
  */
 
-export const RESET_FUNDED_PERCENT = 0.6; // 60% of challenge price
+export const RESET_PHASE1_PERCENT = 0.2; // 20% of challenge price
 export const RESET_PHASE2_PERCENT = 0.3; // 30% of challenge price
+export const RESET_FUNDED_PERCENT = 0.6; // 60% of challenge price
 
-export type ResetKind = "phase2" | "funded";
+export type ResetKind = "phase1" | "phase2" | "funded";
 
 // Reset eligibility cutoff. Only accounts provisioned on/after this date
-// (hardcoded per product decision) are eligible for the paid reset.
+// (hardcoded per product decision) are eligible for the paid reset — unless a
+// reset campaign is active, in which case this cutoff is ignored.
 const RESET_ELIGIBLE_FROM = new Date("2026-09-01T00:00:00.000Z").getTime();
+
+/**
+ * Return the currently active reset campaign (if any) — a row whose window
+ * contains now(). There may be zero or one active campaign; "none found"
+ * means no campaign is active. RLS allows public reads, so server calls with
+ * supabaseAdmin bypass RLS anyway.
+ */
+export async function getActiveResetCampaign(): Promise<{ id: string; name: string; start_at: string; end_at: string } | null> {
+  const now = new Date().toISOString();
+  const { data } = await supabaseAdmin
+    .from("reset_campaigns")
+    .select("id, name, start_at, end_at")
+    .lte("start_at", now)
+    .gte("end_at", now)
+    .limit(1)
+    .maybeSingle();
+  return data ?? null;
+}
 
 /**
  * Compute the reset eligibility + fee for a breached account.
@@ -49,15 +79,22 @@ export async function computeBreachReset(accountId: string) {
   if (account.status !== "breached") {
     return { ok: false as const, error: "Only breached accounts can be reset" };
   }
-  if (account.reset_used) {
-    return { ok: false as const, error: "This account has already been reset once." };
-  }
-  const createdAt = account.created_at ? new Date(account.created_at).getTime() : NaN;
-  if (!createdAt || Number.isNaN(createdAt) || createdAt < RESET_ELIGIBLE_FROM) {
-    return {
-      ok: false as const,
-      error: "This account is not yet eligible for a reset. Resets are available for accounts provisioned on or after 1 Sep 2026. Please contact support if you believe this is a mistake.",
-    };
+
+  const campaign = await getActiveResetCampaign();
+  const campaignActive = !!campaign;
+
+  // Standing checks — skipped entirely while a campaign is active.
+  if (!campaignActive) {
+    if (account.reset_used) {
+      return { ok: false as const, error: "This account has already been reset once." };
+    }
+    const createdAt = account.created_at ? new Date(account.created_at).getTime() : NaN;
+    if (!createdAt || Number.isNaN(createdAt) || createdAt < RESET_ELIGIBLE_FROM) {
+      return {
+        ok: false as const,
+        error: "This account is not yet eligible for a reset. Resets are available for accounts provisioned on or after 1 Sep 2026. Please contact support if you believe this is a mistake.",
+      };
+    }
   }
 
   const phase = Number(account.current_phase);
@@ -65,25 +102,17 @@ export async function computeBreachReset(accountId: string) {
   const isUsd = currency === "USD";
   const startingBalance = Number(account.starting_balance ?? 0);
 
-  let kind: ResetKind | null = null;
-  let feeInCurrency: number;
-
-  if (phase <= 1) {
-    // Phase 1 breach: no reset — must buy a fresh challenge.
-    return { ok: false as const, error: "Phase 1 accounts cannot be reset. Please purchase a new challenge." };
-  } else {
-    // Phase 2 (30%) and Funded (60%) reset fees are both a fraction of the
-    // challenge price — NOT the account size.
-    const { data: challenge } = await supabaseAdmin
-      .from("challenges")
-      .select("price_naira, usd_price")
-      .eq("id", account.challenge_id)
-      .maybeSingle();
-    const base = isUsd ? Number(challenge?.usd_price ?? 0) : Number(challenge?.price_naira ?? 0);
-    kind = phase === 2 ? "phase2" : "funded";
-    const percent = phase === 2 ? RESET_PHASE2_PERCENT : RESET_FUNDED_PERCENT;
-    feeInCurrency = Math.round(base * percent * 100) / 100;
-  }
+  // Phase 1 (20%), Phase 2 (30%) and Funded (60%) reset fees are all a
+  // fraction of the challenge price — NEVER the account size.
+  const { data: challenge } = await supabaseAdmin
+    .from("challenges")
+    .select("price_naira, usd_price")
+    .eq("id", account.challenge_id)
+    .maybeSingle();
+  const base = isUsd ? Number(challenge?.usd_price ?? 0) : Number(challenge?.price_naira ?? 0);
+  const kind: ResetKind = phase <= 1 ? "phase1" : phase === 2 ? "phase2" : "funded";
+  const percent = kind === "phase1" ? RESET_PHASE1_PERCENT : kind === "phase2" ? RESET_PHASE2_PERCENT : RESET_FUNDED_PERCENT;
+  const feeInCurrency = Math.round(base * percent * 100) / 100;
 
   return {
     ok: true as const,
@@ -95,6 +124,8 @@ export async function computeBreachReset(accountId: string) {
     phase,
     fundedTier: Number(account.funded_tier ?? 1),
     feeInCurrency,
+    campaignActive,
+    campaignEndAt: campaign?.end_at ?? null,
   };
 }
 
@@ -113,7 +144,7 @@ export async function provisionBreachReset(args: {
   if (!quote.kind) return { ok: false, error: "Account is not eligible for a reset" };
 
   const account = quote.account;
-  const phase = quote.kind === "funded" ? 3 : 2;
+  const phase = quote.kind === "funded" ? 3 : quote.kind === "phase2" ? 2 : 1;
   const fundedTier = quote.kind === "funded" ? quote.fundedTier : undefined;
 
   // 1. Close the old breached account + mark reset_used (one reset per account).
@@ -144,8 +175,9 @@ export async function provisionBreachReset(args: {
     return { ok: false, error: "Pool empty — no account available for reset. Admin has been notified." };
   }
 
-  // 3. Set phase + funded status/tier on the new account (funded branch only —
-  //    status: "active" + current_phase: 2 is correct for a phase-2 reset).
+  // 3. Set phase + funded status/tier on the new account (funded branch only).
+  //    Phase-1 and phase-2 resets stay at status: "active" (claimPoolAccount's
+  //    default) with the correct current_phase — no override needed.
   await supabaseAdmin
     .from("trader_accounts")
     .update({
@@ -157,7 +189,7 @@ export async function provisionBreachReset(args: {
     .eq("id", poolResult.accountId);
 
   // 4. Notify the trader.
-  const label = quote.kind === "funded" ? `Funded ${quote.fundedTier}` : "Phase 2";
+  const label = quote.kind === "funded" ? `Funded ${quote.fundedTier}` : quote.kind === "phase2" ? "Phase 2" : "Phase 1";
   await supabaseAdmin.from("notifications").insert({
     user_id: args.userId,
     title: "🔄 Account Reset Complete",

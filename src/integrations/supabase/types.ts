@@ -1213,9 +1213,34 @@ export type Database = {
         }
         Relationships: []
       }
+      reset_campaigns: {
+        Row: {
+          created_at: string
+          end_at: string
+          id: string
+          name: string
+          start_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_at: string
+          id?: string
+          name: string
+          start_at: string
+        }
+        Update: {
+          created_at?: string
+          end_at?: string
+          id?: string
+          name?: string
+          start_at?: string
+        }
+        Relationships: []
+      }
       trader_accounts: {
         Row: {
           breach_reason: string | null
+          breached_at: string | null
           challenge_id: string
           created_at: string
           currency: string | null
@@ -1251,6 +1276,7 @@ export type Database = {
         }
         Insert: {
           breach_reason?: string | null
+          breached_at?: string | null
           challenge_id: string
           created_at?: string
           currency?: string | null
@@ -1286,6 +1312,7 @@ export type Database = {
         }
         Update: {
           breach_reason?: string | null
+          breached_at?: string | null
           challenge_id?: string
           created_at?: string
           currency?: string | null
