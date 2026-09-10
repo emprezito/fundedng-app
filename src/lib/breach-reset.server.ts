@@ -178,10 +178,15 @@ export async function provisionBreachReset(args: {
   // 3. Set phase + funded status/tier on the new account (funded branch only).
   //    Phase-1 and phase-2 resets stay at status: "active" (claimPoolAccount's
   //    default) with the correct current_phase — no override needed.
+  //    reset_used: true marks the lifetime reset as consumed on the NEW account
+  //    too, so if it breaches again after a campaign ends it is subject to the
+  //    standing one-lifetime-reset rule. The campaign only overrides the rule
+  //    at reset REQUEST time, never the flag itself.
   await supabaseAdmin
     .from("trader_accounts")
     .update({
       current_phase: phase,
+      reset_used: true,
       ...(quote.kind === "funded"
         ? { status: "funded", trading_days: 0, funded_tier: fundedTier }
         : {}),

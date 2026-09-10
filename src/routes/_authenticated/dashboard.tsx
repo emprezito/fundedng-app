@@ -200,7 +200,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
   const [ddCountdown, setDdCountdown] = useState("");
   const [resetQuote, setResetQuote] = useState<{
     account: Account;
-    kind: "phase2" | "funded";
+    kind: "phase1" | "phase2" | "funded";
     label: string;
     feeText: string;
     sizeText: string;
