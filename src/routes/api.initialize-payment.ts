@@ -45,13 +45,19 @@ export const Route = createFileRoute("/api/initialize-payment")({
           if (!challengeId) {
             return Response.json({ error: "challenge_id is required" }, { status: 400 });
           }
+          const resetAccountId = body.reset_account_id?.trim() || null;
 
           const { data: challenge, error: chErr } = await supabaseAdmin
             .from("challenges")
             .select("id, name, price_naira, usd_price, currency, is_active, account_size")
             .eq("id", challengeId)
             .maybeSingle();
-          if (chErr || !challenge || !challenge.is_active) {
+          if (chErr || !challenge) {
+            return Response.json({ error: "Challenge not available" }, { status: 404 });
+          }
+          // A reset is not a fresh purchase — the trader already owns this
+          // challenge, so a now-retired/inactive listing must not block it.
+          if (!resetAccountId && !challenge.is_active) {
             return Response.json({ error: "Challenge not available" }, { status: 404 });
           }
 
@@ -66,9 +72,7 @@ export const Route = createFileRoute("/api/initialize-payment")({
           }
 
           // Breach Reset: override the amount with the reset fee.
-          let resetAccountId: string | null = null;
-          if (body.reset_account_id?.trim()) {
-            resetAccountId = body.reset_account_id.trim();
+          if (resetAccountId) {
             const reset = await computeBreachReset(resetAccountId);
             if (!reset.ok) {
               return Response.json({ error: reset.error }, { status: 400 });
