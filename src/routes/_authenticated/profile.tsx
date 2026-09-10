@@ -245,7 +245,7 @@ function ProfilePage() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {resettable?.campaignActive
                     ? "Special reset window open — the normal one-reset-per-account and creation-date restrictions are suspended for all accounts while this window is active."
-                    : "Each account can be reset once. Resets are available for accounts created after Sep 1, 2026."}
+                    : "Each account can be reset once. Funded 2 accounts are excluded."}
                 </p>
               </div>
             </div>
@@ -253,7 +253,7 @@ function ProfilePage() {
             {resettable?.campaignActive && resetCountdown !== "ended" && (
               <div className="mt-4 rounded-xl border border-warning/40 bg-warning/5 p-4">
                 <p className="text-xs font-medium text-warning">
-                  ⏳ Special reset window ends in <span className="font-mono font-bold text-foreground">{resetCountdown}</span> — resets normally restricted to accounts created after Sep 1, 2026 and one per account are open to everyone during this window.
+                  ⏳ Special reset window ends in <span className="font-mono font-bold text-foreground">{resetCountdown}</span> — the one-reset-per-account limit is lifted for everyone during this window (Funded 2 accounts remain excluded).
                 </p>
               </div>
             )}

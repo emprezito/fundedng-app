@@ -20,12 +20,16 @@ import { sendPushToUser } from "@/lib/push.server";
  *   - Each account can be reset at most once (reset_used flag).
  *
  * Standing eligibility (enforced when NO reset campaign is active):
- *   - account provisioned on/after RESET_ELIGIBLE_FROM
  *   - reset_used = FALSE
- * While a reset campaign is active (now() between start_at/end_at) BOTH
- * standing checks are skipped at reset-request time — the campaign only
- * overrides the check, never the flag, so a reset performed during a campaign
- * still sets reset_used on the new account and is restricted again afterwards.
+ *   - There is NO account-creation-date restriction — every breached account
+ *     is date-eligible.
+ * Hard exclusion (always, even during a campaign):
+ *   - Funded 2 accounts (funded_tier = 2) can NEVER be reset.
+ * While a reset campaign is active (now() between start_at/end_at) the
+ * standing reset_used check is skipped at reset-request time — the campaign
+ * only overrides the check, never the flag, so a reset performed during a
+ * campaign still sets reset_used on the new account and is restricted again
+ * afterwards. The Funded-2 exclusion is NOT overridden by a campaign.
  *
  * The amount returned is in the ACCOUNT's currency (NGN or USD) for display;
  * the naira fee used for Squad checkout is derived from it.
@@ -36,11 +40,6 @@ export const RESET_PHASE2_PERCENT = 0.3; // 30% of challenge price
 export const RESET_FUNDED_PERCENT = 0.6; // 60% of challenge price
 
 export type ResetKind = "phase1" | "phase2" | "funded";
-
-// Reset eligibility cutoff. Only accounts provisioned on/after this date
-// (hardcoded per product decision) are eligible for the paid reset — unless a
-// reset campaign is active, in which case this cutoff is ignored.
-const RESET_ELIGIBLE_FROM = new Date("2026-09-01T00:00:00.000Z").getTime();
 
 /**
  * Return the currently active reset campaign (if any) — a row whose window
@@ -80,24 +79,24 @@ export async function computeBreachReset(accountId: string) {
     return { ok: false as const, error: "Only breached accounts can be reset" };
   }
 
+  const phase = Number(account.current_phase);
+
+  // Hard exclusion: Funded 2 accounts can never be reset — not even during a
+  // campaign.
+  if (phase >= 3 && Number(account.funded_tier ?? 1) === 2) {
+    return { ok: false as const, error: "Funded 2 accounts cannot be reset." };
+  }
+
   const campaign = await getActiveResetCampaign();
   const campaignActive = !!campaign;
 
-  // Standing checks — skipped entirely while a campaign is active.
-  if (!campaignActive) {
-    if (account.reset_used) {
-      return { ok: false as const, error: "This account has already been reset once." };
-    }
-    const createdAt = account.created_at ? new Date(account.created_at).getTime() : NaN;
-    if (!createdAt || Number.isNaN(createdAt) || createdAt < RESET_ELIGIBLE_FROM) {
-      return {
-        ok: false as const,
-        error: "This account is not yet eligible for a reset. Resets are available for accounts provisioned on or after 1 Sep 2026. Please contact support if you believe this is a mistake.",
-      };
-    }
+  // Standing check (one reset per account) — skipped while a campaign is
+  // active. There is NO account-creation-date restriction: every breached
+  // account is date-eligible.
+  if (!campaignActive && account.reset_used) {
+    return { ok: false as const, error: "This account has already been reset once." };
   }
 
-  const phase = Number(account.current_phase);
   const currency = account.currency ?? "NGN";
   const isUsd = currency === "USD";
   const startingBalance = Number(account.starting_balance ?? 0);

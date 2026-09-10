@@ -1,12 +1,16 @@
--- Reset campaigns: a database-editable time window during which the standing
--- breach-reset restrictions on the profile Reset page are suspended for
--- traders. Extends the existing paid breach-reset system in
--- src/lib/breach-reset.server.ts (no parallel mechanism).
+-- Reset campaigns: a database-editable time window during which the one-reset
+-- per-account restriction on the profile Reset page is suspended for traders.
+-- Extends the existing paid breach-reset system in src/lib/breach-reset.server.ts
+-- (no parallel mechanism).
 --
 -- Standing rules (enforced whenever NO campaign is active):
---   - account must be provisioned on/after 2026-09-01 (RESET_ELIGIBLE_FROM)
 --   - account must not already have used its lifetime reset (reset_used)
--- During an ACTIVE campaign both checks are skipped at reset-request time.
+--   - there is NO account-creation-date restriction — every breached account
+--     is date-eligible
+-- Hard exclusion (always, campaign or not): Funded 2 accounts (funded_tier = 2)
+-- can never be reset.
+-- During an ACTIVE campaign the reset_used check is skipped at reset-request
+-- time.
 --
 -- A campaign is "active" when now() is between start_at and end_at. There may
 -- be zero or one active campaign at any time — code must query for *any* row
