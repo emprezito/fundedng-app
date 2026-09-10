@@ -5,7 +5,7 @@ import { PublicHeader } from "@/components/site/PublicHeader";
 import { Brand } from "@/components/site/Brand";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatNaira, formatUSD, formatCompactSize } from "@/lib/utils";
+import { formatNaira, formatCompactSize } from "@/lib/utils";
 import SocialProofGallery from "@/components/site/SocialProofGallery";
 import { Zap, ShieldCheck, Trophy, ArrowRight, Clock, Ban } from "lucide-react";
 import tradingChartHero from "@/assets/trading-chart-hero.jpg";
@@ -19,6 +19,7 @@ interface Challenge {
   challenge_type?: "standard" | "instant" | null;
   max_daily_drawdown_percent?: number | null;
   max_trading_days?: number | null;
+  category?: "classic" | "titan" | null;
 }
 
 function Index() {
@@ -37,8 +38,8 @@ function Index() {
       .then(({ data }) => setChallenges((data as Challenge[]) ?? []));
   }, []);
 
-  const standardChallenges = challenges.filter((c) => c.challenge_type !== "instant");
-  const instantChallenges = challenges.filter((c) => c.challenge_type === "instant");
+  const classicChallenges = challenges.filter((c) => (c.category ?? "classic") !== "titan");
+  const titanChallenges = challenges.filter((c) => c.category === "titan");
 
   return (
     <div className="min-h-screen">
@@ -129,8 +130,8 @@ function Index() {
           </div>
 
           <HomepageConfigurator
-            standardChallenges={standardChallenges}
-            instantChallenges={instantChallenges}
+            classicChallenges={classicChallenges}
+            titanChallenges={titanChallenges}
           />
         </div>
       </section>
@@ -207,83 +208,59 @@ const fallbackStandard: Challenge[] = [
   { id:"4", name:"Elite", account_size:2000000, price_naira:60000, profit_target_percent:10, max_drawdown_percent:20, max_daily_drawdown_percent:10, phases:2 },
 ];
 
-const fallbackInstant: Challenge[] = [
-  { id:"i1", name:"Instant 1.5M", account_size:1500000, price_naira:120000, profit_target_percent:15, max_drawdown_percent:20, phases:1, max_daily_drawdown_percent:10, max_trading_days:45 },
-  { id:"i2", name:"Instant 2M", account_size:2000000, price_naira:155000, profit_target_percent:15, max_drawdown_percent:20, phases:1, max_daily_drawdown_percent:10, max_trading_days:45 },
-  { id:"i3", name:"Instant 3M", account_size:3000000, price_naira:225000, profit_target_percent:15, max_drawdown_percent:20, phases:1, max_daily_drawdown_percent:10, max_trading_days:45 },
+const fallbackTitan: Challenge[] = [
+  { id:"t1", name:"Titan 1M", account_size:1000000, price_naira:10000, profit_target_percent:10, max_drawdown_percent:15, max_daily_drawdown_percent:6, phases:2, category:"titan" },
+  { id:"t2", name:"Titan 2M", account_size:2000000, price_naira:18000, profit_target_percent:10, max_drawdown_percent:15, max_daily_drawdown_percent:6, phases:2, category:"titan" },
+  { id:"t3", name:"Titan 3M", account_size:3000000, price_naira:25000, profit_target_percent:10, max_drawdown_percent:15, max_daily_drawdown_percent:6, phases:2, category:"titan" },
+  { id:"t5", name:"Titan 5M", account_size:5000000, price_naira:38000, profit_target_percent:10, max_drawdown_percent:15, max_daily_drawdown_percent:6, phases:2, category:"titan" },
+  { id:"t10", name:"Titan 10M", account_size:10000000, price_naira:65000, profit_target_percent:10, max_drawdown_percent:15, max_daily_drawdown_percent:6, phases:2, category:"titan" },
 ];
 
-const usdSizes: Record<string, number[]> = {
-  "2-step": [5000, 10000, 25000, 50000, 100000],
-  instant: [5000, 10000, 25000, 50000],
-};
-
-const usdPrices: Record<number, number> = {
-  5000: 19, 10000: 45, 25000: 99, 50000: 199, 100000: 349,
-};
-
-function HomepageConfigurator({ standardChallenges, instantChallenges }: { standardChallenges: Challenge[]; instantChallenges: Challenge[] }) {
-  const [currency, setCurrency] = useState<"NGN" | "USD">("NGN");
-  const [challengeType, setChallengeType] = useState<"2-step" | "instant">("2-step");
+function HomepageConfigurator({ classicChallenges, titanChallenges }: { classicChallenges: Challenge[]; titanChallenges: Challenge[] }) {
+  const [category, setCategory] = useState<"classic" | "titan">("classic");
   const [selectedSize, setSelectedSize] = useState<number>(0);
 
-  const stdList = standardChallenges.length > 0 ? standardChallenges : fallbackStandard;
-  const instList = instantChallenges.length > 0 ? instantChallenges : fallbackInstant;
+  const classicList = classicChallenges.length > 0 ? classicChallenges : fallbackStandard;
+  const titanList = titanChallenges.length > 0 ? titanChallenges : fallbackTitan;
 
-  const sizes = currency === "NGN"
-    ? (challengeType === "2-step" ? stdList : instList).map(c => Number(c.account_size))
-    : usdSizes[challengeType];
+  const sizes = (category === "titan" ? titanList : classicList).map(c => Number(c.account_size));
 
   useEffect(() => {
     if (sizes.length === 0) return;
-    const def = currency === "NGN" ? (sizes.includes(400000) ? 400000 : sizes[0]) : 10000;
+    const def = sizes.includes(400000) ? 400000 : sizes[0];
     if (selectedSize === 0 || !sizes.includes(selectedSize)) {
       setSelectedSize(def);
     }
-  }, [currency, challengeType, sizes.length]);
+  }, [category, sizes.length]);
 
-  const selectedChallenge = currency === "NGN"
-    ? (challengeType === "2-step" ? stdList : instList).find(c => Number(c.account_size) === selectedSize)
-    : null;
+  const selectedChallenge = (category === "titan" ? titanList : classicList).find(c => Number(c.account_size) === selectedSize);
 
-  const fee = currency === "NGN"
-    ? (selectedChallenge?.price_naira ?? 0)
-    : (selectedSize ? usdPrices[selectedSize] ?? 0 : 0);
+  const fee = selectedChallenge?.price_naira ?? 0;
 
   const searchParams = {
-    currency,
-    type: challengeType === "2-step" ? "2step" : "instant",
+    category,
     size: String(selectedSize),
   };
 
   return (
     <div className="mt-10 space-y-8">
-      {/* Currency */}
+      {/* Category */}
       <div>
-        <label className="font-display mb-3 block text-xs tracking-widest text-muted-foreground">CURRENCY</label>
+        <label className="font-display mb-3 block text-xs tracking-widest text-muted-foreground">CATEGORY</label>
         <div className="inline-flex items-center rounded-full border border-border bg-card p-1">
-          {(["NGN", "USD"] as const).map((c) => (
-            <button key={c} type="button" onClick={() => setCurrency(c)}
-              className={`font-display rounded-full px-6 py-2 text-xs tracking-wider transition-all ${currency === c ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Challenge Type */}
-      <div>
-        <label className="font-display mb-3 block text-xs tracking-widest text-muted-foreground">CHALLENGE TYPE</label>
-        <div className="inline-flex items-center rounded-full border border-border bg-card p-1">
-          {([["2-step", "2-STEP"], ["instant", "INSTANT"]] as const).map(([val, label]) => (
-            <button key={val} type="button" onClick={() => setChallengeType(val)}
-              className={`font-display rounded-full px-5 py-2 text-xs tracking-wider transition-all ${challengeType === val ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
+          {([["classic", "CLASSIC"], ["titan", "TITAN"]] as const).map(([val, label]) => (
+            <button key={val} type="button" onClick={() => setCategory(val)}
+              className={`font-display rounded-full px-6 py-2 text-xs tracking-wider transition-all ${category === val ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
             >
               {label}
             </button>
           ))}
         </div>
+        {category === "titan" && (
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Titan challenges restrict <span className="font-semibold text-warning">XAUUSD</span> and <span className="font-semibold text-warning">BTCUSD</span> — trading these instruments breaches the account.
+          </p>
+        )}
       </div>
 
       {/* Account Size */}
@@ -294,7 +271,7 @@ function HomepageConfigurator({ standardChallenges, instantChallenges }: { stand
             <button key={s} type="button" onClick={() => setSelectedSize(s)}
               className={`font-display rounded-full border px-5 py-2 text-xs tracking-wider transition-all ${selectedSize === s ? "border-primary bg-primary text-primary-foreground shadow" : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground"}`}
             >
-              {formatCompactSize(s, currency)}
+              {formatCompactSize(s, "NGN")}
             </button>
           ))}
         </div>
@@ -307,11 +284,11 @@ function HomepageConfigurator({ standardChallenges, instantChallenges }: { stand
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between border-b border-border pb-2">
               <span className="text-muted-foreground">Account Size</span>
-              <span className="font-display font-semibold">{currency === "NGN" ? formatNaira(selectedSize) : formatUSD(selectedSize)}</span>
+              <span className="font-display font-semibold">{formatNaira(selectedSize)}</span>
             </div>
             <div className="flex items-center justify-between border-b border-border pb-2">
               <span className="text-muted-foreground">Challenge Fee</span>
-              <span className="font-display font-semibold text-primary">{currency === "NGN" ? formatNaira(fee) : formatUSD(fee)}</span>
+              <span className="font-display font-semibold text-primary">{formatNaira(fee)}</span>
             </div>
             <div className="flex items-center justify-between border-b border-border pb-2">
               <span className="text-muted-foreground">Profit Split</span>

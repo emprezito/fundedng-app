@@ -198,7 +198,8 @@ def fetch_accounts(supabase: Client) -> list[dict]:
         supabase.table("trader_accounts")
         .select(
             "id, mt5_login, investor_password, mt5_server, "
-            "starting_balance, peak_equity, status, user_id"
+            "starting_balance, peak_equity, status, user_id, "
+            "challenges(restricted_symbols)"
         )
         .in_("status", ["active", "funded"])
         .not_.is_("investor_password", "null")
@@ -207,6 +208,18 @@ def fetch_accounts(supabase: Client) -> list[dict]:
         .execute()
     )
     return res.data or []
+
+
+def _extract_restricted_symbols(challenge_data: object) -> list[str]:
+    """
+    Normalize the embedded challenges(restricted_symbols) payload into a flat
+    list of symbol prefixes. Tolerates a null/missing relation and whichever
+    shape (single object vs list) supabase-py returns for a to-one embed.
+    """
+    if not challenge_data:
+        return []
+    row = challenge_data[0] if isinstance(challenge_data, list) else challenge_data
+    return list(row.get("restricted_symbols") or [])
 
 
 # ------------------------------------------------------------------
@@ -413,6 +426,48 @@ def check_weekend_violations(open_positions: list) -> list:
     return violations
 
 
+def check_restricted_symbol_violations(
+    open_positions: list,
+    deals: tuple,
+    restricted_symbols: list[str],
+) -> list:
+    """
+    For every open position and every closed entry deal whose symbol starts
+    with one of the account's restricted_symbols prefixes (case-insensitive,
+    matching broker suffix variants like XAUUSDm/XAUUSDc), flag it.
+
+    Returns list of dicts: symbol, ticket, source ("open"|"closed"), volume.
+    No-op ([]) when restricted_symbols is empty -- Classic accounts unaffected.
+    """
+    if not restricted_symbols:
+        return []
+
+    prefixes = [p.upper() for p in restricted_symbols if p]
+    violations: list[dict] = []
+
+    for pos in open_positions:
+        if any(str(pos["symbol"]).upper().startswith(p) for p in prefixes):
+            violations.append({
+                "symbol": pos["symbol"],
+                "ticket": pos["ticket"],
+                "source": "open",
+                "volume": pos["volume"],
+            })
+
+    for d in deals:
+        if d.entry != 0:  # DEAL_ENTRY_IN only -- one flag per opened trade
+            continue
+        if any(str(d.symbol).upper().startswith(p) for p in prefixes):
+            violations.append({
+                "symbol": d.symbol,
+                "ticket": d.ticket,
+                "source": "closed",
+                "volume": d.volume,
+            })
+
+    return violations
+
+
 # Position group window: positions opened within this many seconds of the
 # FIRST same-direction position in a batch are checked for rapid lot-splitting.
 POSITION_GROUP_WINDOW_SECS = 60
@@ -523,13 +578,15 @@ def read_account(
     server: str,
     starting_balance: float = 0,
     weekend_window: bool = False,
+    restricted_symbols: list[str] | None = None,
 ) -> dict:
     """
     Login to MT5 account with investor password and read live data.
 
     Returns:
         dict with equity, balance, profit, scalping_violations,
-        news_violations, open_positions, weekend_violations
+        news_violations, open_positions, weekend_violations,
+        position_violations, restricted_symbol_violations
 
     Raises:
         RuntimeError -- on any problem (caller logs and skips account)
@@ -642,16 +699,22 @@ def read_account(
     #    lot-splitting, no averaging down --
     position_violations = check_position_violations(open_positions)
 
+    # -- Restricted-instrument check (Titan rule, no-op for Classic) -----
+    restricted_symbol_violations = check_restricted_symbol_violations(
+        open_positions, deals, restricted_symbols or []
+    )
+
     return {
-        "equity":              round(info.equity,  2),
-        "balance":             round(info.balance, 2),
-        "profit":              round(info.profit,  2),
-        "scalping_violations": scalping,
-        "news_violations":     news_violations,
-        "open_positions":      open_positions,
-        "weekend_violations":  weekend_violations,
-        "closed_deals":        closed_deals,
-        "position_violations": position_violations,
+        "equity":                        round(info.equity,  2),
+        "balance":                       round(info.balance, 2),
+        "profit":                        round(info.profit,  2),
+        "scalping_violations":           scalping,
+        "news_violations":               news_violations,
+        "open_positions":                open_positions,
+        "weekend_violations":            weekend_violations,
+        "closed_deals":                  closed_deals,
+        "position_violations":           position_violations,
+        "restricted_symbol_violations":  restricted_symbol_violations,
     }
 
 
@@ -670,6 +733,7 @@ def post_snapshot(
     weekend_violations: list,
     closed_deals: list,
     position_violations: list,
+    restricted_symbol_violations: list,
 ) -> None:
     """
     POST equity data to the FundedNG sync endpoint.
@@ -678,16 +742,17 @@ def post_snapshot(
     """
     session = get_http_session()
     payload = {
-        "account_id":          account_id,
-        "mt5_login":           mt5_login,
-        "equity":              equity,
-        "balance":             balance,
-        "profit":              profit,
-        "scalping_violations": scalping_violations,
-        "news_violations":     news_violations,
-        "weekend_violations":  weekend_violations,
-        "closed_deals":        closed_deals,
-        "position_violations": position_violations,
+        "account_id":                 account_id,
+        "mt5_login":                  mt5_login,
+        "equity":                     equity,
+        "balance":                    balance,
+        "profit":                     profit,
+        "scalping_violations":        scalping_violations,
+        "news_violations":            news_violations,
+        "weekend_violations":         weekend_violations,
+        "closed_deals":               closed_deals,
+        "position_violations":        position_violations,
+        "restricted_symbol_violations": restricted_symbol_violations,
     }
     resp = session.post(API_ENDPOINT, json=payload, timeout=20)
     if resp.status_code >= 400:
@@ -716,6 +781,8 @@ def process_account(acct: dict) -> dict:
     inv_pw    = str(acct.get("investor_password") or "")
     server    = str(acct.get("mt5_server") or "Exness-MT5Trial9")
     start_bal = float(acct.get("starting_balance") or 0)
+    # Titan challenges restrict certain instruments; Classic is empty -> no-op.
+    restricted_symbols = _extract_restricted_symbols(acct.get("challenges"))
 
     result = {"login": login, "ok": False, "error": ""}
 
@@ -729,7 +796,10 @@ def process_account(acct: dict) -> dict:
     data: dict | None = None
     with mt5_lock:
         try:
-            data = read_account(login, inv_pw, server, start_bal, weekend_window)
+            data = read_account(
+                login, inv_pw, server, start_bal,
+                weekend_window, restricted_symbols,
+            )
         except Exception as exc:
             logger.error(f"[{login}] MT5 error: {exc}")
             result["error"] = str(exc)
@@ -747,6 +817,7 @@ def process_account(acct: dict) -> dict:
     weekend_violations  = data.get("weekend_violations", [])
     closed_deals        = data.get("closed_deals", [])
     position_violations = data.get("position_violations", [])
+    restricted_symbol_violations = data.get("restricted_symbol_violations", [])
     try:
         post_snapshot(
             account_id          = acct_id,
@@ -759,6 +830,7 @@ def process_account(acct: dict) -> dict:
             weekend_violations  = weekend_violations,
             closed_deals        = closed_deals,
             position_violations = position_violations,
+            restricted_symbol_violations = restricted_symbol_violations,
         )
     except Exception as exc:
         logger.error(f"[{login}] API error: {exc}")
@@ -796,6 +868,14 @@ def process_account(acct: dict) -> dict:
             + ", ".join(
                 f"{v['symbol']} ({v['type']})"
                 for v in position_violations
+            )
+        )
+    if restricted_symbol_violations:
+        logger.warning(
+            f"[{login}] RESTRICTED SYMBOL VIOLATION -- "
+            + ", ".join(
+                f"{v['symbol']} #{v['ticket']} ({v['source']})"
+                for v in restricted_symbol_violations
             )
         )
 

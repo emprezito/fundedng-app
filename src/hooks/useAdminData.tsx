@@ -14,6 +14,8 @@ const blankChallenge = {
   phases: 2, is_active: true, challenge_type: "standard", max_daily_drawdown_percent: 10, max_trading_days: 45, discount_percent: 0,
   min_trading_days: 3,
   drawdown_type: "trailing_balance",
+  category: "classic",
+  restricted_symbols: "",
 };
 
 function useAdminDataHook() {
@@ -122,7 +124,14 @@ function useAdminDataHook() {
   };
 
   const openNewChallenge = () => { setEditingChallenge(null); setChallengeForm(blankChallenge); setChallengeEditOpen(true); };
-  const openEditChallenge = (c: any) => { setEditingChallenge(c); setChallengeForm({ ...c }); setChallengeEditOpen(true); };
+  const openEditChallenge = (c: any) => {
+    setEditingChallenge(c);
+    setChallengeForm({
+      ...c,
+      restricted_symbols: Array.isArray(c.restricted_symbols) ? c.restricted_symbols.join(", ") : "",
+    });
+    setChallengeEditOpen(true);
+  };
 
   const saveChallenge = async () => {
     if (!challengeForm.name.trim()) return toast.error("Name is required");
@@ -139,6 +148,8 @@ function useAdminDataHook() {
       min_trading_days: Number(challengeForm.min_trading_days) || 3,
       discount_percent: Number(challengeForm.discount_percent) || 0,
       drawdown_type: challengeForm.drawdown_type || "trailing_balance",
+      category: challengeForm.category === "titan" ? "titan" : "classic",
+      restricted_symbols: String(challengeForm.restricted_symbols || "").split(",").map((s: string) => s.trim()).filter(Boolean),
     };
     let error;
     if (editingChallenge?.id) ({ error } = await supabase.from("challenges").update(payload).eq("id", editingChallenge.id));

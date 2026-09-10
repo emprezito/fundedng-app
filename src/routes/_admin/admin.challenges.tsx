@@ -38,11 +38,15 @@ function ChallengesPage() {
             <div className="flex items-start justify-between gap-2">
               <div><div className="font-display font-semibold">{c.name}</div><div className="text-xs text-muted-foreground">{(c.currency === "USD" ? formatUSD : formatNaira)(c.account_size)} account</div></div>
               <div className="flex flex-col items-end gap-1">
+                {c.category === "titan" && <Badge className="font-display bg-purple-500/20 text-purple-500 border-purple-500/40 border">TITAN</Badge>}
                 {c.challenge_type === "instant" && <Badge className="font-display bg-primary/20 text-primary border-primary/40 border">INSTANT</Badge>}
                 <Badge variant="outline" className={`font-display ${c.currency === "USD" ? "border-blue-500/40 text-blue-500" : "border-green-500/40 text-green-500"}`}>{c.currency === "USD" ? "USD" : "NGN"}</Badge>
                 <Badge variant="outline" className={`font-display ${c.is_active ? "border-primary/40 text-primary" : "border-muted text-muted-foreground"}`}>{c.is_active ? "ACTIVE" : "INACTIVE"}</Badge>
               </div>
             </div>
+            {Array.isArray(c.restricted_symbols) && c.restricted_symbols.length > 0 && (
+              <div className="text-xs"><span className="text-muted-foreground">Restricted:</span> <span className="font-display text-warning">{c.restricted_symbols.join(", ")}</span></div>
+            )}
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div><span className="text-muted-foreground">Fee:</span> <span className="font-display text-primary">{c.currency === "USD" ? formatUSD(c.usd_price) : formatNaira(c.price_naira)}</span></div>
               <div><span className="text-muted-foreground">Phases:</span> {c.phases}</div>
@@ -68,12 +72,14 @@ function ChallengesPage() {
             <tr>
               <th className="px-4 py-3 text-left">Name</th>
               <th className="px-4 py-3 text-left">Currency</th>
+              <th className="px-4 py-3 text-left">Category</th>
               <th className="px-4 py-3 text-left">Type</th>
               <th className="px-4 py-3 text-left">Account Size</th>
               <th className="px-4 py-3 text-left">Fee</th>
               <th className="px-4 py-3 text-left">Target %</th>
               <th className="px-4 py-3 text-left">Max DD %</th>
               <th className="px-4 py-3 text-left">Phases</th>
+              <th className="px-4 py-3 text-left">Restricted</th>
               <th className="px-4 py-3 text-left">Active</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
@@ -83,12 +89,14 @@ function ChallengesPage() {
               <tr key={c.id} className="border-b border-border last:border-0">
                 <td className="px-4 py-3 font-display font-semibold">{c.name}</td>
                 <td className="px-4 py-3"><Badge variant="outline" className={`font-display ${c.currency === "USD" ? "border-blue-500/40 text-blue-500" : "border-green-500/40 text-green-500"}`}>{c.currency === "USD" ? "USD" : "NGN"}</Badge></td>
+                <td className="px-4 py-3"><Badge variant="outline" className={`font-display ${(c.category ?? "classic") === "titan" ? "border-purple-500/40 text-purple-500" : "border-muted text-muted-foreground"}`}>{c.category === "titan" ? "TITAN" : "CLASSIC"}</Badge></td>
                 <td className="px-4 py-3"><Badge variant="outline" className={`font-display ${c.challenge_type === "instant" ? "border-primary/40 text-primary" : "border-muted text-muted-foreground"}`}>{c.challenge_type === "instant" ? "INSTANT" : "STANDARD"}</Badge></td>
                 <td className="px-4 py-3">{c.currency === "USD" ? formatUSD(c.account_size) : formatNaira(c.account_size)}</td>
                 <td className="px-4 py-3 font-display text-primary">{c.currency === "USD" ? formatUSD(c.usd_price) : formatNaira(c.price_naira)}</td>
                 <td className="px-4 py-3">{c.phase2_profit_target_percent ? `${c.profit_target_percent}% / ${c.phase2_profit_target_percent}%` : `${c.profit_target_percent}%`}</td>
                 <td className="px-4 py-3">{c.max_drawdown_percent}%</td>
                 <td className="px-4 py-3">{c.phases}</td>
+                <td className="px-4 py-3">{Array.isArray(c.restricted_symbols) && c.restricted_symbols.length > 0 ? <span className="text-xs font-medium text-warning">{c.restricted_symbols.join(", ")}</span> : <span className="text-muted-foreground">—</span>}</td>
                 <td className="px-4 py-3"><Switch checked={c.is_active} onCheckedChange={() => toggleChallengeActive(c)} /></td>
                 <td className="px-4 py-3 text-right flex gap-1 justify-end">
                   <Button size="sm" variant="outline" onClick={() => openEditChallenge(c)}>Edit</Button>
@@ -98,7 +106,7 @@ function ChallengesPage() {
                 </td>
               </tr>
             ))}
-            {challengeList.length === 0 && (<tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">No challenges yet.</td></tr>)}
+            {challengeList.length === 0 && (<tr><td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">No challenges yet.</td></tr>)}
           </tbody>
         </table>
       </div>
@@ -143,6 +151,22 @@ function ChallengesPage() {
                     className={`rounded-md border px-3 py-2 text-sm font-display ${challengeForm.drawdown_type === "trailing_balance" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Trailing (Balance)</button>
                 </div>
               </div>
+            <div className="grid gap-1.5">
+                <Label>Category</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setChallengeForm({ ...challengeForm, category: "classic" })}
+                    className={`rounded-md border px-3 py-2 text-sm font-display ${challengeForm.category !== "titan" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Classic</button>
+                  <button type="button" onClick={() => setChallengeForm({ ...challengeForm, category: "titan" })}
+                    className={`rounded-md border px-3 py-2 text-sm font-display ${challengeForm.category === "titan" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Titan</button>
+                </div>
+              </div>
+              {challengeForm.category === "titan" && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="ch-restricted">Restricted Symbols (comma-separated prefixes)</Label>
+                  <Input id="ch-restricted" value={challengeForm.restricted_symbols ?? ""} onChange={(e) => setChallengeForm({ ...challengeForm, restricted_symbols: e.target.value })} placeholder="e.g. XAUUSD, BTCUSD" />
+                  <p className="text-[11px] text-muted-foreground">Any position/deal on these instruments breaches the account instantly. Prefix match: XAUUSD also flags XAUUSDm/XAUUSDc.</p>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5"><Label htmlFor="ch-size">Account Size {challengeForm.currency === "USD" ? "($)" : "(₦)"}</Label><Input id="ch-size" type="number" min={0} value={challengeForm.account_size} onChange={(e) => setChallengeForm({ ...challengeForm, account_size: e.target.value })} /></div>

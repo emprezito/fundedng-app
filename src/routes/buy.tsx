@@ -21,8 +21,7 @@ import { QuickSignupDialog } from "@/components/QuickSignupDialog";
 export const Route = createFileRoute("/buy")({
   validateSearch: z.object({
     challenge: z.string().optional(),
-    currency: z.enum(["NGN", "USD"]).optional(),
-    type: z.enum(["2step", "instant"]).optional(),
+    category: z.enum(["classic", "titan"]).optional(),
     size: z.union([z.string(), z.number()]).optional(),
     promo: z.string().optional(),
   }),
@@ -37,37 +36,9 @@ interface Challenge {
   max_trading_days?: number | null;
   min_trading_days?: number;
   currency?: string; usd_price?: number; discount_percent?: number;
+  category?: "classic" | "titan" | null;
+  restricted_symbols?: string[];
 }
-
-const usdPrices: Record<number, number> = {
-  5000: 34,
-  10000: 60,
-  20000: 90,
-  50000: 150,
-  100000: 350,
-};
-
-const usdSizeOptions: Record<string, number[]> = {
-  instant: [5000, 10000, 20000, 50000],
-  "1-step": [5000, 10000, 20000, 50000],
-  "2-step": [5000, 10000, 20000, 50000, 100000],
-};
-
-const usdRules = {
-  profitTargetPhase1: 10,
-  profitTargetPhase2: 5,
-  maxTotalDrawdown: 10,
-  dailyDrawdown: 5,
-  minProfitableDays: 5,
-  profitableDayThreshold: "0.5% of starting balance",
-  profitSplit: 80,
-  payoutCooldown: "10 business days",
-  maxPayouts: 5,
-  weekendHolding: false,
-  newsRestriction: "5 minutes before/after high-impact events",
-  minHoldTime: "3 minutes",
-  inactivity: "15 days",
-};
 
 function BuyPage() {
   const { isAuthenticated, user, session, profile } = useAuth();
@@ -79,12 +50,11 @@ function BuyPage() {
   const [error, setError] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [planType, setPlanType] = useState<"standard" | "instant">("standard");
+  const [category, setCategory] = useState<"classic" | "titan">("classic");
   const [promoCode, setPromoCode] = useState("");
   const [promoDiscount, setPromoDiscount] = useState<{ code: string; percent: number } | null>(null);
   const [partnerCode, setPartnerCode] = useState<string | null>(null);
-  const [currency, setCurrency] = useState<"NGN" | "USD">("NGN");
-  const [challengeType, setChallengeType] = useState<"instant" | "1-step" | "2-step">("2-step");
+  const [currency] = useState<"NGN" | "USD">("NGN");
   const [selectedSize, setSelectedSize] = useState<number | null>(null);
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   const [rateUpdatedAt, setRateUpdatedAt] = useState<string | null>(null);
@@ -95,8 +65,7 @@ function BuyPage() {
   const nextHref = (() => {
     const params = new URLSearchParams();
     if (search.challenge) params.set("challenge", search.challenge);
-    if (search.currency) params.set("currency", search.currency);
-    if (search.type) params.set("type", search.type);
+    if (search.category) params.set("category", search.category);
     if (search.size) params.set("size", search.size);
     if (search.promo) params.set("promo", search.promo);
     const qs = params.toString();
@@ -135,39 +104,33 @@ function BuyPage() {
           if (found) {
             setSelected(found);
             setSelectedSize(Number(found.account_size));
-            setChallengeType(found.challenge_type === "instant" ? "instant" : "2-step");
-            setPlanType(found.challenge_type === "instant" ? "instant" : "standard");
+            setCategory(found.category === "titan" ? "titan" : "classic");
             return;
           }
         }
 
-        // Priority 2: currency / type / size params from homepage configurator
-        const hasParams = search.currency || search.type || search.size;
-        if (hasParams) {
-          if (search.currency === "USD" || search.currency === "NGN") setCurrency(search.currency);
-          if (search.type === "instant") { setChallengeType("instant"); setPlanType("instant"); }
-          else if (search.type === "2step") { setChallengeType("2-step"); setPlanType("standard"); }
+        // Priority 2: category / size params from homepage configurator
+        const targetCategory = search.category ?? category;
+        if (search.category || search.size) {
+          if (search.category) setCategory(search.category);
           if (search.size) {
             const size = Number(search.size);
             setSelectedSize(size);
-            const cur = search.currency || "NGN";
-            const match = list.find((c) => c.currency === cur && Number(c.account_size) === size && (search.type === "instant" ? c.challenge_type === "instant" : c.challenge_type !== "instant"));
+            const match = list.find((c) => c.currency === "NGN" && (c.category ?? "classic") === targetCategory && Number(c.account_size) === size);
             if (match) setSelected(match);
           }
           return;
         }
 
-        // Priority 3: default pre-selection (2-step / first or 400k for NGN, first for USD)
-        const std = list.filter((c) => c.currency === currency && c.challenge_type !== "instant");
+        // Priority 3: default pre-selection for the active category
+        const std = list.filter((c) => c.currency === "NGN" && (c.category ?? "classic") === category);
         if (std.length > 0) {
-          const target = currency === "NGN"
-            ? (std.find((c) => Number(c.account_size) === 400000) || std[0])
-            : std[0];
+          const target = std.find((c) => Number(c.account_size) === 400000) || std[0];
           setSelectedSize(Number(target.account_size));
           setSelected(target);
         }
       });
-  }, [search.challenge, search.currency, search.type, search.size]);
+  }, [search.challenge, search.category, search.size]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -204,29 +167,25 @@ function BuyPage() {
     });
   }, [profile?.partner_referred_by]);
 
-  const effectivePlanType: "standard" | "instant" =
-    challengeType === "2-step" ? "standard" : "instant";
-
-  const handleCurrencyChange = (c: "NGN" | "USD") => {
-    setCurrency(c);
+  const handleCategoryChange = (c: "classic" | "titan") => {
+    setCategory(c);
     setSelectedSize(null);
     setSelected(null);
     setPromoDiscount(null);
     setError("");
-  };
 
-  const handleChallengeTypeChange = (t: "instant" | "1-step" | "2-step") => {
-    setChallengeType(t);
-    setPlanType(t === "2-step" ? "standard" : "instant");
-    setSelectedSize(null);
-    setSelected(null);
-    setPromoDiscount(null);
-    setError("");
+    // Preselect the first size of the newly selected category if its
+    // challenges have already loaded.
+    const list = challenges.filter((ch) => ch.currency === "NGN" && (ch.category ?? "classic") === c);
+    if (list.length > 0) {
+      const target = list.find((ch) => Number(ch.account_size) === 400000) || list[0];
+      setSelectedSize(Number(target.account_size));
+      setSelected(target);
+    }
   };
 
   const visibleChallenges = challenges.filter((c) =>
-    c.currency === currency &&
-    (effectivePlanType === "instant" ? c.challenge_type === "instant" : c.challenge_type !== "instant")
+    c.currency === "NGN" && (c.category ?? "classic") === category
   );
 
   const handleSizeSelect = (size: number) => {
@@ -422,42 +381,31 @@ function BuyPage() {
               {/* ========== LEFT: Configurator Pills ========== */}
               <div className="flex-1 space-y-8">
 
-                {/* --- Currency Toggle --- */}
+                {/* --- Category --- */}
                 <div>
-                  <label className="font-display mb-3 block text-xs tracking-widest text-muted-foreground">CURRENCY</label>
+                  <label className="font-display mb-3 block text-xs tracking-widest text-muted-foreground">CATEGORY</label>
                   <div className="inline-flex items-center rounded-full border border-border bg-card p-1">
-                    <button
-                      type="button"
-                      onClick={() => handleCurrencyChange("NGN")}
-                      className={`font-display rounded-full px-6 py-2 text-xs tracking-wider transition-all ${currency === "NGN" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
-                    >
-                      NGN
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleCurrencyChange("USD")}
-                      className={`font-display rounded-full px-6 py-2 text-xs tracking-wider transition-all ${currency === "USD" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
-                    >
-                      USD
-                    </button>
-                  </div>
-                </div>
-
-                {/* --- Challenge Type --- */}
-                <div>
-                  <label className="font-display mb-3 block text-xs tracking-widest text-muted-foreground">CHALLENGE TYPE</label>
-                  <div className="inline-flex items-center rounded-full border border-border bg-card p-1">
-                    {(["instant", "1-step", "2-step"] as const).map((t) => (
+                    {(["classic", "titan"] as const).map((t) => (
                       <button
                         key={t}
                         type="button"
-                        onClick={() => handleChallengeTypeChange(t)}
-                        className={`font-display rounded-full px-5 py-2 text-xs tracking-wider transition-all ${challengeType === t ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
+                        onClick={() => handleCategoryChange(t)}
+                        className={`font-display rounded-full px-6 py-2 text-xs tracking-wider transition-all ${category === t ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
                       >
-                        {t === "instant" ? "INSTANT" : t === "1-step" ? "1-STEP" : "2-STEP"}
+                        {t === "classic" ? "CLASSIC" : "TITAN"}
                       </button>
                     ))}
                   </div>
+                  {category === "titan" && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Titan challenges restrict <span className="font-semibold text-warning">XAUUSD</span> and <span className="font-semibold text-warning">BTCUSD</span> — trading these instruments breaches the account.
+                    </p>
+                  )}
+                  {category === "classic" && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Classic challenges allow all instruments, including Gold and Crypto CFDs.
+                    </p>
+                  )}
                 </div>
 
                 {/* --- Account Size --- */}
@@ -547,7 +495,7 @@ function BuyPage() {
 
                 {!selected && visibleChallenges.length === 0 && (
                   <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-                    No {currency} {effectivePlanType === "instant" ? "Instant" : "Standard"} challenges available right now.
+                    No {category === "titan" ? "Titan" : "Classic"} challenges available right now.
                   </div>
                 )}
               </div>
@@ -588,7 +536,8 @@ function BuyPage() {
                         </span>
                       </div>
 
-                      {challengeType === "2-step" && (
+                      {/* Profit Target Phase 2 — present on multi-phase challenges */}
+                      {(selected?.phases ?? 2) >= 2 && (
                         <div className="flex items-center justify-between border-b border-border pb-2">
                           <span className="text-muted-foreground">Profit Target Phase 2</span>
                           <span className="font-display font-semibold">

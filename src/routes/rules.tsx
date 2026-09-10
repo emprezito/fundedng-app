@@ -464,10 +464,10 @@ function RulesPage() {
             </div>
           </div>
 
-          {/* USD CTA */}
+          {/* Titan CTA */}
           <div className="mt-16 text-center">
-            <Link to="/buy" search={{ currency: "USD" }} className="inline-block">
-              <Button size="lg" className="font-display">Get a USD Account <ArrowRight className="ml-2 h-4 w-4" /></Button>
+            <Link to="/buy" search={{ category: "titan" }} className="inline-block">
+              <Button size="lg" className="font-display">Get a Titan Account <ArrowRight className="ml-2 h-4 w-4" /></Button>
             </Link>
           </div>
         </div>

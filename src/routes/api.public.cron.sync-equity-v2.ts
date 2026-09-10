@@ -184,6 +184,12 @@ async function syncEquityV2(request: Request) {
       position_count: number;
       direction?: string;
     }>;
+    restricted_symbol_violations?: Array<{
+      symbol: string;
+      ticket: number;
+      source: "open" | "closed";
+      volume: number;
+    }>;
   };
   try {
     body = await request.json();
@@ -191,7 +197,7 @@ async function syncEquityV2(request: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { account_id, mt5_login, equity, balance, profit, scalping_violations, news_violations, weekend_violations, closed_deals, fetcher_only, open_positions, position_violations } = body;
+  const { account_id, mt5_login, equity, balance, profit, scalping_violations, news_violations, weekend_violations, closed_deals, fetcher_only, open_positions, position_violations, restricted_symbol_violations } = body;
 
   // Trades fetcher path — skip equity/drawdown/peak, only sync trade data
   if (fetcher_only === true) {
@@ -500,6 +506,32 @@ async function syncEquityV2(request: Request) {
       }
     } catch (e) {
       console.error("[sync-equity-v2] weekend forward failed:", e);
+    }
+  }
+
+  // Forward restricted-symbol violations to the handler endpoint
+  if (restricted_symbol_violations?.length > 0) {
+    const restrictedUrl = new URL(request.url);
+    restrictedUrl.pathname = "/api/public/cron/handle-restricted-symbol-violation";
+    try {
+      const resp = await fetch(restrictedUrl.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-cron-secret": process.env.CRON_SECRET ?? "",
+        },
+        body: JSON.stringify({
+          account_id,
+          mt5_login,
+          violations: restricted_symbol_violations,
+        }),
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        console.error(`[sync-equity-v2] restricted-symbol handler returned ${resp.status}: ${body}`);
+      }
+    } catch (e) {
+      console.error("[sync-equity-v2] restricted-symbol forward failed:", e);
     }
   }
 

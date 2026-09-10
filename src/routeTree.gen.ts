@@ -68,6 +68,7 @@ import { Route as ApiPublicCronRefreshLeaderboardRouteImport } from './routes/ap
 import { Route as ApiPublicCronReconcilePaymentsRouteImport } from './routes/api.public.cron.reconcile-payments'
 import { Route as ApiPublicCronHandleWeekendViolationRouteImport } from './routes/api.public.cron.handle-weekend-violation'
 import { Route as ApiPublicCronHandleScalpingRouteImport } from './routes/api.public.cron.handle-scalping'
+import { Route as ApiPublicCronHandleRestrictedSymbolViolationRouteImport } from './routes/api.public.cron.handle-restricted-symbol-violation'
 import { Route as ApiPublicCronHandlePositionsViolationRouteImport } from './routes/api.public.cron.handle-positions-violation'
 import { Route as ApiPublicCronHandleNewsViolationRouteImport } from './routes/api.public.cron.handle-news-violation'
 import { Route as ApiPublicCronDailyContentRouteImport } from './routes/api.public.cron.daily-content'
@@ -373,6 +374,12 @@ const ApiPublicCronHandleScalpingRoute =
     path: '/api/public/cron/handle-scalping',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicCronHandleRestrictedSymbolViolationRoute =
+  ApiPublicCronHandleRestrictedSymbolViolationRouteImport.update({
+    id: '/api/public/cron/handle-restricted-symbol-violation',
+    path: '/api/public/cron/handle-restricted-symbol-violation',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicCronHandlePositionsViolationRoute =
   ApiPublicCronHandlePositionsViolationRouteImport.update({
     id: '/api/public/cron/handle-positions-violation',
@@ -454,6 +461,7 @@ export interface FileRoutesByFullPath {
   '/api/public/cron/daily-content': typeof ApiPublicCronDailyContentRoute
   '/api/public/cron/handle-news-violation': typeof ApiPublicCronHandleNewsViolationRoute
   '/api/public/cron/handle-positions-violation': typeof ApiPublicCronHandlePositionsViolationRoute
+  '/api/public/cron/handle-restricted-symbol-violation': typeof ApiPublicCronHandleRestrictedSymbolViolationRoute
   '/api/public/cron/handle-scalping': typeof ApiPublicCronHandleScalpingRoute
   '/api/public/cron/handle-weekend-violation': typeof ApiPublicCronHandleWeekendViolationRoute
   '/api/public/cron/reconcile-payments': typeof ApiPublicCronReconcilePaymentsRoute
@@ -515,6 +523,7 @@ export interface FileRoutesByTo {
   '/api/public/cron/daily-content': typeof ApiPublicCronDailyContentRoute
   '/api/public/cron/handle-news-violation': typeof ApiPublicCronHandleNewsViolationRoute
   '/api/public/cron/handle-positions-violation': typeof ApiPublicCronHandlePositionsViolationRoute
+  '/api/public/cron/handle-restricted-symbol-violation': typeof ApiPublicCronHandleRestrictedSymbolViolationRoute
   '/api/public/cron/handle-scalping': typeof ApiPublicCronHandleScalpingRoute
   '/api/public/cron/handle-weekend-violation': typeof ApiPublicCronHandleWeekendViolationRoute
   '/api/public/cron/reconcile-payments': typeof ApiPublicCronReconcilePaymentsRoute
@@ -581,6 +590,7 @@ export interface FileRoutesById {
   '/api/public/cron/daily-content': typeof ApiPublicCronDailyContentRoute
   '/api/public/cron/handle-news-violation': typeof ApiPublicCronHandleNewsViolationRoute
   '/api/public/cron/handle-positions-violation': typeof ApiPublicCronHandlePositionsViolationRoute
+  '/api/public/cron/handle-restricted-symbol-violation': typeof ApiPublicCronHandleRestrictedSymbolViolationRoute
   '/api/public/cron/handle-scalping': typeof ApiPublicCronHandleScalpingRoute
   '/api/public/cron/handle-weekend-violation': typeof ApiPublicCronHandleWeekendViolationRoute
   '/api/public/cron/reconcile-payments': typeof ApiPublicCronReconcilePaymentsRoute
@@ -646,6 +656,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/daily-content'
     | '/api/public/cron/handle-news-violation'
     | '/api/public/cron/handle-positions-violation'
+    | '/api/public/cron/handle-restricted-symbol-violation'
     | '/api/public/cron/handle-scalping'
     | '/api/public/cron/handle-weekend-violation'
     | '/api/public/cron/reconcile-payments'
@@ -707,6 +718,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/daily-content'
     | '/api/public/cron/handle-news-violation'
     | '/api/public/cron/handle-positions-violation'
+    | '/api/public/cron/handle-restricted-symbol-violation'
     | '/api/public/cron/handle-scalping'
     | '/api/public/cron/handle-weekend-violation'
     | '/api/public/cron/reconcile-payments'
@@ -772,6 +784,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/daily-content'
     | '/api/public/cron/handle-news-violation'
     | '/api/public/cron/handle-positions-violation'
+    | '/api/public/cron/handle-restricted-symbol-violation'
     | '/api/public/cron/handle-scalping'
     | '/api/public/cron/handle-weekend-violation'
     | '/api/public/cron/reconcile-payments'
@@ -815,6 +828,7 @@ export interface RootRouteChildren {
   ApiPublicCronDailyContentRoute: typeof ApiPublicCronDailyContentRoute
   ApiPublicCronHandleNewsViolationRoute: typeof ApiPublicCronHandleNewsViolationRoute
   ApiPublicCronHandlePositionsViolationRoute: typeof ApiPublicCronHandlePositionsViolationRoute
+  ApiPublicCronHandleRestrictedSymbolViolationRoute: typeof ApiPublicCronHandleRestrictedSymbolViolationRoute
   ApiPublicCronHandleScalpingRoute: typeof ApiPublicCronHandleScalpingRoute
   ApiPublicCronHandleWeekendViolationRoute: typeof ApiPublicCronHandleWeekendViolationRoute
   ApiPublicCronReconcilePaymentsRoute: typeof ApiPublicCronReconcilePaymentsRoute
@@ -1238,6 +1252,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronHandleScalpingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cron/handle-restricted-symbol-violation': {
+      id: '/api/public/cron/handle-restricted-symbol-violation'
+      path: '/api/public/cron/handle-restricted-symbol-violation'
+      fullPath: '/api/public/cron/handle-restricted-symbol-violation'
+      preLoaderRoute: typeof ApiPublicCronHandleRestrictedSymbolViolationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/handle-positions-violation': {
       id: '/api/public/cron/handle-positions-violation'
       path: '/api/public/cron/handle-positions-violation'
@@ -1391,6 +1412,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCronHandleNewsViolationRoute: ApiPublicCronHandleNewsViolationRoute,
   ApiPublicCronHandlePositionsViolationRoute:
     ApiPublicCronHandlePositionsViolationRoute,
+  ApiPublicCronHandleRestrictedSymbolViolationRoute:
+    ApiPublicCronHandleRestrictedSymbolViolationRoute,
   ApiPublicCronHandleScalpingRoute: ApiPublicCronHandleScalpingRoute,
   ApiPublicCronHandleWeekendViolationRoute:
     ApiPublicCronHandleWeekendViolationRoute,
