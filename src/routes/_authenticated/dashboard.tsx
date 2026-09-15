@@ -935,8 +935,22 @@ function DashboardPage() {
       groupMap.set(key, arr);
     }
     return Array.from(groupMap.entries()).map(([orderId, groupAccounts]) => {
-      groupAccounts.sort((a, b) => a.current_phase - b.current_phase);
-      const active = groupAccounts.find((a) => a.status === "active") ?? groupAccounts[groupAccounts.length - 1];
+      groupAccounts.sort((a, b) => a.current_phase - b.current_phase);   // display order (unchanged)
+
+      // A trader's CURRENT account is always the most recently provisioned one
+      // that isn't closed. Payout/advance flows close the old account and
+      // provision a fresh one under the SAME order_id (e.g. Funded 1 -> Funded 2:
+      // old = "closed", new = "funded"). Phase progression leaves earlier
+      // accounts "passed". Picking the newest non-closed account is unambiguous
+      // and doesn't depend on phase-sort tie order or specific status strings —
+      // a breached current account, or a future new status, is still picked
+      // correctly.
+      const active =
+        groupAccounts
+          .filter((a) => a.status !== "closed")
+          .slice()
+          .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))[0] ??
+        groupAccounts[groupAccounts.length - 1];   // last resort (all-closed order)
       const first = groupAccounts[0];
       return {
         orderId,

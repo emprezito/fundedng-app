@@ -18,18 +18,11 @@ import { sendPushToUser } from "@/lib/push.server";
  *                        account provisioned from the funded pool at the SAME
  *                        tier and size.
  *   - Each account can be reset at most once (reset_used flag).
- *
- * Standing eligibility (enforced when NO reset campaign is active):
- *   - reset_used = FALSE
- *   - There is NO account-creation-date restriction — every breached account
- *     is date-eligible.
- * Hard exclusion (always, even during a campaign):
- *   - Funded 2 accounts (funded_tier = 2) can NEVER be reset.
- * While a reset campaign is active (now() between start_at/end_at) the
- * standing reset_used check is skipped at reset-request time — the campaign
- * only overrides the check, never the flag, so a reset performed during a
- * campaign still sets reset_used on the new account and is restricted again
- * afterwards. The Funded-2 exclusion is NOT overridden by a campaign.
+ *   - Account must have been provisioned on/after 1 Sep 2026
+ *     (RESET_ELIGIBLE_FROM). Both this and the reset_used check are enforced
+ *     UNCONDITIONALLY on every reset attempt — no time window or flag can
+ *     bypass them.
+ *   - Funded 2 accounts (funded_tier = 2) can never be reset (hard exclusion).
  *
  * The amount returned is in the ACCOUNT's currency (NGN or USD) for display;
  * the naira fee used for Squad checkout is derived from it.
@@ -41,23 +34,9 @@ export const RESET_FUNDED_PERCENT = 0.6; // 60% of challenge price
 
 export type ResetKind = "phase1" | "phase2" | "funded";
 
-/**
- * Return the currently active reset campaign (if any) — a row whose window
- * contains now(). There may be zero or one active campaign; "none found"
- * means no campaign is active. RLS allows public reads, so server calls with
- * supabaseAdmin bypass RLS anyway.
- */
-export async function getActiveResetCampaign(): Promise<{ id: string; name: string; start_at: string; end_at: string } | null> {
-  const now = new Date().toISOString();
-  const { data } = await supabaseAdmin
-    .from("reset_campaigns")
-    .select("id, name, start_at, end_at")
-    .lte("start_at", now)
-    .gte("end_at", now)
-    .limit(1)
-    .maybeSingle();
-  return data ?? null;
-}
+// Reset eligibility cutoff. Only accounts provisioned on/after this date
+// (hardcoded per product decision) are eligible for the paid reset.
+const RESET_ELIGIBLE_FROM = new Date("2026-09-01T00:00:00.000Z").getTime();
 
 /**
  * Compute the reset eligibility + fee for a breached account.
@@ -79,22 +58,24 @@ export async function computeBreachReset(accountId: string) {
     return { ok: false as const, error: "Only breached accounts can be reset" };
   }
 
-  const phase = Number(account.current_phase);
-
-  // Hard exclusion: Funded 2 accounts can never be reset — not even during a
-  // campaign.
-  if (phase >= 3 && Number(account.funded_tier ?? 1) === 2) {
-    return { ok: false as const, error: "Funded 2 accounts cannot be reset." };
+  // Unconditional check: one reset per account — no exceptions.
+  if (account.reset_used) {
+    return { ok: false as const, error: "This account has already been reset once." };
+  }
+  // Unconditional check: account must be provisioned on/after 1 Sep 2026.
+  const createdAt = account.created_at ? new Date(account.created_at).getTime() : NaN;
+  if (!createdAt || Number.isNaN(createdAt) || createdAt < RESET_ELIGIBLE_FROM) {
+    return {
+      ok: false as const,
+      error: "This account is not yet eligible for a reset. Resets are available for accounts provisioned on or after 1 Sep 2026. Please contact support if you believe this is a mistake.",
+    };
   }
 
-  const campaign = await getActiveResetCampaign();
-  const campaignActive = !!campaign;
+  const phase = Number(account.current_phase);
 
-  // Standing check (one reset per account) — skipped while a campaign is
-  // active. There is NO account-creation-date restriction: every breached
-  // account is date-eligible.
-  if (!campaignActive && account.reset_used) {
-    return { ok: false as const, error: "This account has already been reset once." };
+  // Hard exclusion: Funded 2 accounts can never be reset.
+  if (phase >= 3 && Number(account.funded_tier ?? 1) === 2) {
+    return { ok: false as const, error: "Funded 2 accounts cannot be reset." };
   }
 
   const currency = account.currency ?? "NGN";
@@ -123,8 +104,6 @@ export async function computeBreachReset(accountId: string) {
     phase,
     fundedTier: Number(account.funded_tier ?? 1),
     feeInCurrency,
-    campaignActive,
-    campaignEndAt: campaign?.end_at ?? null,
   };
 }
 
@@ -176,16 +155,13 @@ export async function provisionBreachReset(args: {
 
   // 3. Set phase + funded status/tier on the new account (funded branch only).
   //    Phase-1 and phase-2 resets stay at status: "active" (claimPoolAccount's
-  //    default) with the correct current_phase — no override needed.
-  //    reset_used: true marks the lifetime reset as consumed on the NEW account
-  //    too, so if it breaches again after a campaign ends it is subject to the
-  //    standing one-lifetime-reset rule. The campaign only overrides the rule
-  //    at reset REQUEST time, never the flag itself.
+  //    default) with the correct current_phase — no override needed. The new
+  //    account is fresh, so its reset_used stays FALSE and keeps its own
+  //    one-reset entitlement.
   await supabaseAdmin
     .from("trader_accounts")
     .update({
       current_phase: phase,
-      reset_used: true,
       ...(quote.kind === "funded"
         ? { status: "funded", trading_days: 0, funded_tier: fundedTier }
         : {}),

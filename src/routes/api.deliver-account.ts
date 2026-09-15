@@ -137,12 +137,9 @@ export const Route = createFileRoute("/api/deliver-account")({
             funded_tier: resetTier ?? 1,
             trading_days: 0,
             // A funded reset must land as status: "funded" (a Phase 2 reset is
-            // correctly left as status: "active" + current_phase: 2).
+            // correctly left as status: "active" + current_phase: 2). The new
+            // reset account is fresh, so its reset_used stays FALSE.
             status: resetPhase >= 3 ? "funded" : "active",
-            // A reset consumes the lifetime reset entitlement on the NEW account
-            // too, matching provisionBreachReset — a later breach (outside a
-            // campaign) is then subject to the one-lifetime-reset rule.
-            ...(order.reset_account_id ? { reset_used: true } : {}),
           });
           if (insertErr) {
             return Response.json({ error: insertErr.message }, { status: 500 });
