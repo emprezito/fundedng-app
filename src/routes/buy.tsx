@@ -21,7 +21,7 @@ import { QuickSignupDialog } from "@/components/QuickSignupDialog";
 export const Route = createFileRoute("/buy")({
   validateSearch: z.object({
     challenge: z.string().optional(),
-    category: z.enum(["classic", "titan"]).optional(),
+    category: z.enum(["classic", "titan", "flash"]).optional(),
     size: z.union([z.string(), z.number()]).optional(),
     promo: z.string().optional(),
   }),
@@ -36,7 +36,7 @@ interface Challenge {
   max_trading_days?: number | null;
   min_trading_days?: number;
   currency?: string; usd_price?: number; discount_percent?: number;
-  category?: "classic" | "titan" | null;
+  category?: "classic" | "titan" | "flash" | null;
   restricted_symbols?: string[];
 }
 
@@ -50,7 +50,7 @@ function BuyPage() {
   const [error, setError] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [category, setCategory] = useState<"classic" | "titan">("classic");
+  const [category, setCategory] = useState<"classic" | "titan" | "flash">("classic");
   const [promoCode, setPromoCode] = useState("");
   const [promoDiscount, setPromoDiscount] = useState<{ code: string; percent: number } | null>(null);
   const [partnerCode, setPartnerCode] = useState<string | null>(null);
@@ -104,7 +104,7 @@ function BuyPage() {
           if (found) {
             setSelected(found);
             setSelectedSize(Number(found.account_size));
-            setCategory(found.category === "titan" ? "titan" : "classic");
+            setCategory(found.category === "titan" ? "titan" : found.category === "flash" ? "flash" : "classic");
             return;
           }
         }
@@ -167,7 +167,7 @@ function BuyPage() {
     });
   }, [profile?.partner_referred_by]);
 
-  const handleCategoryChange = (c: "classic" | "titan") => {
+  const handleCategoryChange = (c: "classic" | "titan" | "flash") => {
     setCategory(c);
     setSelectedSize(null);
     setSelected(null);
@@ -385,20 +385,25 @@ function BuyPage() {
                 <div>
                   <label className="font-display mb-3 block text-xs tracking-widest text-muted-foreground">CATEGORY</label>
                   <div className="inline-flex items-center rounded-full border border-border bg-card p-1">
-                    {(["classic", "titan"] as const).map((t) => (
+                    {(["classic", "titan", "flash"] as const).map((t) => (
                       <button
                         key={t}
                         type="button"
                         onClick={() => handleCategoryChange(t)}
                         className={`font-display rounded-full px-6 py-2 text-xs tracking-wider transition-all ${category === t ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
                       >
-                        {t === "classic" ? "CLASSIC" : "TITAN"}
+                        {t === "classic" ? "CLASSIC" : t === "titan" ? "TITAN" : "FLASH"}
                       </button>
                     ))}
                   </div>
                   {category === "titan" && (
                     <p className="mt-2 text-xs text-muted-foreground">
                       Titan challenges restrict <span className="font-semibold text-warning">XAUUSD</span> and <span className="font-semibold text-warning">BTCUSD</span> — trading these instruments breaches the account.
+                    </p>
+                  )}
+                  {category === "flash" && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Flash challenges are fast-paced evaluation accounts with accelerated rules and tighter timelines.
                     </p>
                   )}
                   {category === "classic" && (
@@ -495,7 +500,7 @@ function BuyPage() {
 
                 {!selected && visibleChallenges.length === 0 && (
                   <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-                    No {category === "titan" ? "Titan" : "Classic"} challenges available right now.
+                    No {category === "titan" ? "Titan" : category === "flash" ? "Flash" : "Classic"} challenges available right now.
                   </div>
                 )}
               </div>

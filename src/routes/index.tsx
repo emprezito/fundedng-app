@@ -19,7 +19,7 @@ interface Challenge {
   challenge_type?: "standard" | "instant" | null;
   max_daily_drawdown_percent?: number | null;
   max_trading_days?: number | null;
-  category?: "classic" | "titan" | null;
+  category?: "classic" | "titan" | "flash" | null;
 }
 
 function Index() {
@@ -38,8 +38,9 @@ function Index() {
       .then(({ data }) => setChallenges((data as Challenge[]) ?? []));
   }, []);
 
-  const classicChallenges = challenges.filter((c) => (c.category ?? "classic") !== "titan");
+  const classicChallenges = challenges.filter((c) => (c.category ?? "classic") === "classic");
   const titanChallenges = challenges.filter((c) => c.category === "titan");
+  const flashChallenges = challenges.filter((c) => c.category === "flash");
 
   return (
     <div className="min-h-screen">
@@ -132,6 +133,7 @@ function Index() {
           <HomepageConfigurator
             classicChallenges={classicChallenges}
             titanChallenges={titanChallenges}
+            flashChallenges={flashChallenges}
           />
         </div>
       </section>
@@ -216,14 +218,21 @@ const fallbackTitan: Challenge[] = [
   { id:"t10", name:"Titan 10M", account_size:10000000, price_naira:65000, profit_target_percent:10, max_drawdown_percent:15, max_daily_drawdown_percent:6, phases:2, category:"titan" },
 ];
 
-function HomepageConfigurator({ classicChallenges, titanChallenges }: { classicChallenges: Challenge[]; titanChallenges: Challenge[] }) {
-  const [category, setCategory] = useState<"classic" | "titan">("classic");
+const fallbackFlash: Challenge[] = [
+  { id:"f1", name:"Flash 500K", account_size:500000, price_naira:9500, profit_target_percent:12, max_drawdown_percent:10, max_daily_drawdown_percent:5, phases:1, category:"flash" },
+  { id:"f2", name:"Flash 1M", account_size:1000000, price_naira:18500, profit_target_percent:12, max_drawdown_percent:10, max_daily_drawdown_percent:5, phases:1, category:"flash" },
+  { id:"f3", name:"Flash 2M", account_size:2000000, price_naira:36000, profit_target_percent:12, max_drawdown_percent:10, max_daily_drawdown_percent:5, phases:1, category:"flash" },
+];
+
+function HomepageConfigurator({ classicChallenges, titanChallenges, flashChallenges }: { classicChallenges: Challenge[]; titanChallenges: Challenge[]; flashChallenges: Challenge[] }) {
+  const [category, setCategory] = useState<"classic" | "titan" | "flash">("classic");
   const [selectedSize, setSelectedSize] = useState<number>(0);
 
   const classicList = classicChallenges.length > 0 ? classicChallenges : fallbackStandard;
   const titanList = titanChallenges.length > 0 ? titanChallenges : fallbackTitan;
+  const flashList = flashChallenges.length > 0 ? flashChallenges : fallbackFlash;
 
-  const sizes = (category === "titan" ? titanList : classicList).map(c => Number(c.account_size));
+  const sizes = (category === "titan" ? titanList : category === "flash" ? flashList : classicList).map(c => Number(c.account_size));
 
   useEffect(() => {
     if (sizes.length === 0) return;
@@ -233,7 +242,7 @@ function HomepageConfigurator({ classicChallenges, titanChallenges }: { classicC
     }
   }, [category, sizes.length]);
 
-  const selectedChallenge = (category === "titan" ? titanList : classicList).find(c => Number(c.account_size) === selectedSize);
+  const selectedChallenge = (category === "titan" ? titanList : category === "flash" ? flashList : classicList).find(c => Number(c.account_size) === selectedSize);
 
   const fee = selectedChallenge?.price_naira ?? 0;
 
@@ -248,7 +257,7 @@ function HomepageConfigurator({ classicChallenges, titanChallenges }: { classicC
       <div>
         <label className="font-display mb-3 block text-xs tracking-widest text-muted-foreground">CATEGORY</label>
         <div className="inline-flex items-center rounded-full border border-border bg-card p-1">
-          {([["classic", "CLASSIC"], ["titan", "TITAN"]] as const).map(([val, label]) => (
+          {([["classic", "CLASSIC"], ["titan", "TITAN"], ["flash", "FLASH"]] as const).map(([val, label]) => (
             <button key={val} type="button" onClick={() => setCategory(val)}
               className={`font-display rounded-full px-6 py-2 text-xs tracking-wider transition-all ${category === val ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
             >
@@ -259,6 +268,11 @@ function HomepageConfigurator({ classicChallenges, titanChallenges }: { classicC
         {category === "titan" && (
           <p className="mt-2 text-center text-xs text-muted-foreground">
             Titan challenges restrict <span className="font-semibold text-warning">XAUUSD</span> and <span className="font-semibold text-warning">BTCUSD</span> — trading these instruments breaches the account.
+          </p>
+        )}
+        {category === "flash" && (
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Flash challenges are fast-paced evaluation accounts with accelerated rules and tighter timelines.
           </p>
         )}
       </div>
