@@ -48,7 +48,7 @@ interface Account {
   currency?: string;
   funded_tier?: number;
   last_payout_date?: string | null;
-  challenges?: { name: string; profit_target_percent: number; phase2_profit_target_percent?: number | null; max_drawdown_percent: number; phases: number; min_trading_days?: number; max_daily_drawdown_percent?: number | null; drawdown_type?: string };
+  challenges?: { name: string; profit_target_percent: number; phase2_profit_target_percent?: number | null; max_drawdown_percent: number; phases: number; min_trading_days?: number; max_daily_drawdown_percent?: number | null; drawdown_type?: string; category?: string };
 }
 
 interface ChallengeGroup {
@@ -503,6 +503,8 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
     }
   };
 
+  const isFlash = account.challenges?.category === "flash";
+
   return (
     <div className="mt-4 space-y-4">
       {account.status === "breached" && account.breach_reason && (
@@ -511,7 +513,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
           <AlertDescription>
             <span className="font-display font-semibold">Account Breached</span>
             <p className="mt-1 text-sm">{account.breach_reason}</p>
-            {pendingReset === "pending" && (
+            {pendingReset === "pending" && !isFlash && (
               <Button
                 className="mt-3"
                 variant="secondary"
@@ -523,7 +525,7 @@ function AccountGroupDetail({ group, bankAccountNumber, bankName, bankAccountNam
                 Claim your reset account
               </Button>
             )}
-            {pendingReset === "none" && (
+            {pendingReset === "none" && !isFlash && (
               <Button
                 className="mt-3"
                 variant="secondary"
@@ -996,7 +998,7 @@ function DashboardPage() {
   const load = async (): Promise<Account[]> => {
     if (!user) return [];
     const [a, p, n, c, pf] = await Promise.all([
-      supabase.from("trader_accounts").select("*, challenges(name,profit_target_percent,phase2_profit_target_percent,max_drawdown_percent,phases,min_trading_days,max_daily_drawdown_percent,drawdown_type)").eq("user_id", user.id).order("created_at", { ascending: false }),
+      supabase.from("trader_accounts").select("*, challenges(name,profit_target_percent,phase2_profit_target_percent,max_drawdown_percent,phases,min_trading_days,max_daily_drawdown_percent,drawdown_type,category)").eq("user_id", user.id).order("created_at", { ascending: false }),
       supabase.from("payouts").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
       supabase.from("notifications").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(20),
       supabase.from("certificates").select("*").eq("user_id", user.id).order("issued_at", { ascending: false }),
@@ -1017,7 +1019,7 @@ function DashboardPage() {
         // Find the corresponding trader_accounts row (created during delivery)
         const { data: taData } = await supabase
           .from("trader_accounts")
-          .select("*, challenges(name,profit_target_percent,phase2_profit_target_percent,max_drawdown_percent,phases,drawdown_type)")
+          .select("*, challenges(name,profit_target_percent,phase2_profit_target_percent,max_drawdown_percent,phases,drawdown_type,category)")
           .eq("mt5_login", pfa.mt5_login)
           .eq("user_id", user.id)
           .maybeSingle();
@@ -1035,7 +1037,7 @@ function DashboardPage() {
           if (challengeId) {
             const { data } = await supabase
               .from("challenges")
-              .select("name, profit_target_percent, phase2_profit_target_percent, max_drawdown_percent, phases, min_trading_days, max_daily_drawdown_percent, drawdown_type")
+              .select("name, profit_target_percent, phase2_profit_target_percent, max_drawdown_percent, phases, min_trading_days, max_daily_drawdown_percent, drawdown_type, category")
               .eq("id", challengeId)
               .maybeSingle();
             chData = data;

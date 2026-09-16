@@ -23,6 +23,7 @@ import { sendPushToUser } from "@/lib/push.server";
  *     UNCONDITIONALLY on every reset attempt — no time window or flag can
  *     bypass them.
  *   - Funded 2 accounts (funded_tier = 2) can never be reset (hard exclusion).
+ *   - Flash-category challenge accounts can never be reset (hard exclusion).
  *
  * The amount returned is in the ACCOUNT's currency (NGN or USD) for display;
  * the naira fee used for Squad checkout is derived from it.
@@ -58,6 +59,16 @@ export async function computeBreachReset(accountId: string) {
     return { ok: false as const, error: "Only breached accounts can be reset" };
   }
 
+  // Fetch the challenge category near the top — before the phase/tier fee
+  // calculation and before the Funded-2 exclusion below. The Flash exclusion
+  // is a HARD exclusion and must be checked early enough that no existing or
+  // future reset-campaign flag can bypass it.
+  const { data: challenge } = await supabaseAdmin
+    .from("challenges")
+    .select("category")
+    .eq("id", account.challenge_id)
+    .maybeSingle();
+
   // Unconditional check: one reset per account — no exceptions.
   if (account.reset_used) {
     return { ok: false as const, error: "This account has already been reset once." };
@@ -77,6 +88,12 @@ export async function computeBreachReset(accountId: string) {
   if (phase >= 3 && Number(account.funded_tier ?? 1) === 2) {
     return { ok: false as const, error: "Funded 2 accounts cannot be reset." };
   }
+  // Hard exclusion: Flash challenge accounts can never be reset. Checked
+  // unconditionally and BEFORE any campaign-active bypass logic, so no active
+  // reset campaign can ever override it.
+  if (challenge?.category === "flash") {
+    return { ok: false as const, error: "Flash challenge accounts are not eligible for reset." };
+  }
 
   const currency = account.currency ?? "NGN";
   const isUsd = currency === "USD";
@@ -84,12 +101,12 @@ export async function computeBreachReset(accountId: string) {
 
   // Phase 1 (20%), Phase 2 (30%) and Funded (60%) reset fees are all a
   // fraction of the challenge price — NEVER the account size.
-  const { data: challenge } = await supabaseAdmin
+  const { data: challengePricing } = await supabaseAdmin
     .from("challenges")
     .select("price_naira, usd_price")
     .eq("id", account.challenge_id)
     .maybeSingle();
-  const base = isUsd ? Number(challenge?.usd_price ?? 0) : Number(challenge?.price_naira ?? 0);
+  const base = isUsd ? Number(challengePricing?.usd_price ?? 0) : Number(challengePricing?.price_naira ?? 0);
   const kind: ResetKind = phase <= 1 ? "phase1" : phase === 2 ? "phase2" : "funded";
   const percent = kind === "phase1" ? RESET_PHASE1_PERCENT : kind === "phase2" ? RESET_PHASE2_PERCENT : RESET_FUNDED_PERCENT;
   const feeInCurrency = Math.round(base * percent * 100) / 100;
