@@ -998,7 +998,7 @@ function DashboardPage() {
   const load = async (): Promise<Account[]> => {
     if (!user) return [];
     const [a, p, n, c, pf] = await Promise.all([
-      supabase.from("trader_accounts").select("*, challenges(name,profit_target_percent,phase2_profit_target_percent,max_drawdown_percent,phases,min_trading_days,max_daily_drawdown_percent,drawdown_type,category)").eq("user_id", user.id).order("created_at", { ascending: false }),
+      (supabase as any).from("trader_accounts").select("*, challenges(name,profit_target_percent,phase2_profit_target_percent,max_drawdown_percent,phases,min_trading_days,max_daily_drawdown_percent,drawdown_type,category)").eq("user_id", user.id).order("created_at", { ascending: false }),
       supabase.from("payouts").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
       supabase.from("notifications").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(20),
       supabase.from("certificates").select("*").eq("user_id", user.id).order("issued_at", { ascending: false }),
@@ -1017,7 +1017,7 @@ function DashboardPage() {
       // Check if we already added it
       if (!list.find((acc) => acc.mt5_login === pfa.mt5_login)) {
         // Find the corresponding trader_accounts row (created during delivery)
-        const { data: taData } = await supabase
+        const { data: taData } = await (supabase as any)
           .from("trader_accounts")
           .select("*, challenges(name,profit_target_percent,phase2_profit_target_percent,max_drawdown_percent,phases,drawdown_type,category)")
           .eq("mt5_login", pfa.mt5_login)
@@ -1035,7 +1035,7 @@ function DashboardPage() {
           const challengeId = pfa.challenge_id;
           let chData = null;
           if (challengeId) {
-            const { data } = await supabase
+            const { data } = await (supabase as any)
               .from("challenges")
               .select("name, profit_target_percent, phase2_profit_target_percent, max_drawdown_percent, phases, min_trading_days, max_daily_drawdown_percent, drawdown_type, category")
               .eq("id", challengeId)

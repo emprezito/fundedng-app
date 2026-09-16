@@ -37,6 +37,7 @@ interface Challenge {
   min_trading_days?: number;
   currency?: string; usd_price?: number; discount_percent?: number;
   category?: "classic" | "titan" | "flash" | null;
+  drawdown_type?: string;
   restricted_symbols?: string[];
 }
 
@@ -553,7 +554,9 @@ function BuyPage() {
 
                       {/* Max Drawdown (Trailing) */}
                       <div className="flex items-center justify-between border-b border-border pb-2">
-                        <span className="text-muted-foreground">Balance-based Drawdown</span>
+                        <span className="text-muted-foreground">
+                          {selected?.drawdown_type === "trailing_equity" ? "Trailing Drawdown" : "Balance-based Drawdown"}
+                        </span>
                         <span className="font-display font-semibold">
                           {`${selected?.max_drawdown_percent ?? 0}%`}
                         </span>

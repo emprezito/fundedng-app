@@ -67,7 +67,7 @@ export async function computeBreachReset(accountId: string) {
     .from("challenges")
     .select("category")
     .eq("id", account.challenge_id)
-    .maybeSingle();
+    .maybeSingle() as unknown as { data: { category?: string | null } | null };
 
   // Unconditional check: one reset per account — no exceptions.
   if (account.reset_used) {
