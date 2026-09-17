@@ -111,7 +111,6 @@ function GiveawaysPage() {
             {emailsRaw.trim() && (
               <p className="mt-1 text-xs text-muted-foreground">
                 {emails.length} valid email{emails.length === 1 ? "" : "s"} detected
-                {emails.length !== parseEmails(emailsRaw).length ? "" : ""}
                 {parseEmails(emailsRaw).length < emailsRaw.split(/[\s,;]+/).filter(Boolean).length
                   ? " — some lines were skipped (invalid or duplicate)"
                   : ""}
