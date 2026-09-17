@@ -57,6 +57,7 @@ import { Route as AdminAdminPoolRouteImport } from './routes/_admin/admin.pool'
 import { Route as AdminAdminPendingRouteImport } from './routes/_admin/admin.pending'
 import { Route as AdminAdminPayoutsRouteImport } from './routes/_admin/admin.payouts'
 import { Route as AdminAdminPartnersRouteImport } from './routes/_admin/admin.partners'
+import { Route as AdminAdminGiveawaysRouteImport } from './routes/_admin/admin.giveaways'
 import { Route as AdminAdminDiscountsRouteImport } from './routes/_admin/admin.discounts'
 import { Route as AdminAdminChallengesRouteImport } from './routes/_admin/admin.challenges'
 import { Route as AdminAdminAiContentRouteImport } from './routes/_admin/admin.ai-content'
@@ -314,6 +315,11 @@ const AdminAdminPartnersRoute = AdminAdminPartnersRouteImport.update({
   path: '/partners',
   getParentRoute: () => AdminAdminRoute,
 } as any)
+const AdminAdminGiveawaysRoute = AdminAdminGiveawaysRouteImport.update({
+  id: '/giveaways',
+  path: '/giveaways',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
 const AdminAdminDiscountsRoute = AdminAdminDiscountsRouteImport.update({
   id: '/discounts',
   path: '/discounts',
@@ -443,6 +449,7 @@ export interface FileRoutesByFullPath {
   '/admin/ai-content': typeof AdminAdminAiContentRoute
   '/admin/challenges': typeof AdminAdminChallengesRoute
   '/admin/discounts': typeof AdminAdminDiscountsRoute
+  '/admin/giveaways': typeof AdminAdminGiveawaysRoute
   '/admin/partners': typeof AdminAdminPartnersRoute
   '/admin/payouts': typeof AdminAdminPayoutsRoute
   '/admin/pending': typeof AdminAdminPendingRoute
@@ -505,6 +512,7 @@ export interface FileRoutesByTo {
   '/admin/ai-content': typeof AdminAdminAiContentRoute
   '/admin/challenges': typeof AdminAdminChallengesRoute
   '/admin/discounts': typeof AdminAdminDiscountsRoute
+  '/admin/giveaways': typeof AdminAdminGiveawaysRoute
   '/admin/partners': typeof AdminAdminPartnersRoute
   '/admin/payouts': typeof AdminAdminPayoutsRoute
   '/admin/pending': typeof AdminAdminPendingRoute
@@ -572,6 +580,7 @@ export interface FileRoutesById {
   '/_admin/admin/ai-content': typeof AdminAdminAiContentRoute
   '/_admin/admin/challenges': typeof AdminAdminChallengesRoute
   '/_admin/admin/discounts': typeof AdminAdminDiscountsRoute
+  '/_admin/admin/giveaways': typeof AdminAdminGiveawaysRoute
   '/_admin/admin/partners': typeof AdminAdminPartnersRoute
   '/_admin/admin/payouts': typeof AdminAdminPayoutsRoute
   '/_admin/admin/pending': typeof AdminAdminPendingRoute
@@ -638,6 +647,7 @@ export interface FileRouteTypes {
     | '/admin/ai-content'
     | '/admin/challenges'
     | '/admin/discounts'
+    | '/admin/giveaways'
     | '/admin/partners'
     | '/admin/payouts'
     | '/admin/pending'
@@ -700,6 +710,7 @@ export interface FileRouteTypes {
     | '/admin/ai-content'
     | '/admin/challenges'
     | '/admin/discounts'
+    | '/admin/giveaways'
     | '/admin/partners'
     | '/admin/payouts'
     | '/admin/pending'
@@ -766,6 +777,7 @@ export interface FileRouteTypes {
     | '/_admin/admin/ai-content'
     | '/_admin/admin/challenges'
     | '/_admin/admin/discounts'
+    | '/_admin/admin/giveaways'
     | '/_admin/admin/partners'
     | '/_admin/admin/payouts'
     | '/_admin/admin/pending'
@@ -1175,6 +1187,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAdminPartnersRouteImport
       parentRoute: typeof AdminAdminRoute
     }
+    '/_admin/admin/giveaways': {
+      id: '/_admin/admin/giveaways'
+      path: '/giveaways'
+      fullPath: '/admin/giveaways'
+      preLoaderRoute: typeof AdminAdminGiveawaysRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
     '/_admin/admin/discounts': {
       id: '/_admin/admin/discounts'
       path: '/discounts'
@@ -1296,6 +1315,7 @@ interface AdminAdminRouteChildren {
   AdminAdminAiContentRoute: typeof AdminAdminAiContentRoute
   AdminAdminChallengesRoute: typeof AdminAdminChallengesRoute
   AdminAdminDiscountsRoute: typeof AdminAdminDiscountsRoute
+  AdminAdminGiveawaysRoute: typeof AdminAdminGiveawaysRoute
   AdminAdminPartnersRoute: typeof AdminAdminPartnersRoute
   AdminAdminPayoutsRoute: typeof AdminAdminPayoutsRoute
   AdminAdminPendingRoute: typeof AdminAdminPendingRoute
@@ -1312,6 +1332,7 @@ const AdminAdminRouteChildren: AdminAdminRouteChildren = {
   AdminAdminAiContentRoute: AdminAdminAiContentRoute,
   AdminAdminChallengesRoute: AdminAdminChallengesRoute,
   AdminAdminDiscountsRoute: AdminAdminDiscountsRoute,
+  AdminAdminGiveawaysRoute: AdminAdminGiveawaysRoute,
   AdminAdminPartnersRoute: AdminAdminPartnersRoute,
   AdminAdminPayoutsRoute: AdminAdminPayoutsRoute,
   AdminAdminPendingRoute: AdminAdminPendingRoute,

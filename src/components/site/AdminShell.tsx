@@ -1,8 +1,24 @@
 import { Link, Outlet, useRouterState, useLocation } from "@tanstack/react-router";
 import {
-  LayoutDashboard, Users2, Clock, Banknote, Trophy,
-  Tag, LifeBuoy, Gift, Handshake, Database, ImageIcon,
-  LogOut, ArrowLeft, ShieldCheck, Download, Menu, X, Sparkles, Award
+  LayoutDashboard,
+  Users2,
+  Clock,
+  Banknote,
+  Trophy,
+  Tag,
+  LifeBuoy,
+  Gift,
+  Handshake,
+  Database,
+  ImageIcon,
+  LogOut,
+  ArrowLeft,
+  ShieldCheck,
+  Download,
+  Menu,
+  X,
+  Sparkles,
+  Award,
 } from "lucide-react";
 import { Brand } from "./Brand";
 import { NotificationBell } from "./NotificationBell";
@@ -12,20 +28,20 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
 const ADMIN_NAV = [
-  { label: "Overview",     to: "/admin",           icon: LayoutDashboard },
-  { label: "Accounts",     to: "/admin/accounts",  icon: Users2 },
-  { label: "Pending",      to: "/admin/pending",   icon: Clock },
-  { label: "Payouts",      to: "/admin/payouts",   icon: Banknote },
-  { label: "Challenges",   to: "/admin/challenges",icon: Trophy },
-  { label: "Discounts",    to: "/admin/discounts", icon: Tag },
-  { label: "Giveaways",    to: "/admin/giveaways", icon: Award },
-  { label: "Tickets",      to: "/admin/tickets",   icon: LifeBuoy },
-  { label: "Affiliate",    to: "/admin/affiliate", icon: Gift },
-  { label: "Partners",     to: "/admin/partners",  icon: Handshake },
-  { label: "Account Pool", to: "/admin/pool",      icon: Database },
-  { label: "Social Proof", to: "/admin/social",    icon: ImageIcon },
-  { label: "AI Content",  to: "/admin/ai-content", icon: Sparkles },
-  { label: "Settings",     to: "/admin/settings",  icon: ShieldCheck },
+  { label: "Overview", to: "/admin", icon: LayoutDashboard },
+  { label: "Accounts", to: "/admin/accounts", icon: Users2 },
+  { label: "Pending", to: "/admin/pending", icon: Clock },
+  { label: "Payouts", to: "/admin/payouts", icon: Banknote },
+  { label: "Challenges", to: "/admin/challenges", icon: Trophy },
+  { label: "Discounts", to: "/admin/discounts", icon: Tag },
+  { label: "Giveaways", to: "/admin/giveaways", icon: Award },
+  { label: "Tickets", to: "/admin/tickets", icon: LifeBuoy },
+  { label: "Affiliate", to: "/admin/affiliate", icon: Gift },
+  { label: "Partners", to: "/admin/partners", icon: Handshake },
+  { label: "Account Pool", to: "/admin/pool", icon: Database },
+  { label: "Social Proof", to: "/admin/social", icon: ImageIcon },
+  { label: "AI Content", to: "/admin/ai-content", icon: Sparkles },
+  { label: "Settings", to: "/admin/settings", icon: ShieldCheck },
 ] as const;
 
 function AdminSidebarNav({ onNavClick }: { onNavClick?: () => void }) {
@@ -35,7 +51,8 @@ function AdminSidebarNav({ onNavClick }: { onNavClick?: () => void }) {
   return (
     <nav className="flex-1 space-y-1 px-3 py-4">
       {ADMIN_NAV.map((item) => {
-        const active = currentPath === item.to || (item.to === "/admin" && currentPath === "/admin");
+        const active =
+          currentPath === item.to || (item.to === "/admin" && currentPath === "/admin");
         const Icon = item.icon;
         return (
           <Link
@@ -152,19 +169,14 @@ export function AdminShell() {
       <div
         className={cn(
           "fixed inset-0 z-50 md:hidden transition-opacity duration-300",
-          mobileNavOpen
-            ? "opacity-100 pointer-events-auto"
-            : "opacity-0 pointer-events-none"
+          mobileNavOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
         )}
       >
-        <div
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-          onClick={closeNav}
-        />
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeNav} />
         <aside
           className={cn(
             "absolute top-0 left-0 flex h-full w-60 flex-col border-r border-border bg-background transition-transform duration-300",
-            mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+            mobileNavOpen ? "translate-x-0" : "-translate-x-full",
           )}
         >
           <div className="flex h-16 items-center justify-between px-6">

@@ -37,13 +37,20 @@ function GiveawaysPage() {
   const [lastGranted, setLastGranted] = useState<string | null>(null);
 
   const emails = parseEmails(emailsRaw);
-  const challenge = challengeList.find((c: any) => c.id === challengeId);
+  const challenge = challengeList.find((c) => c.id === challengeId);
 
   const submit = async () => {
     if (!challengeId) return toast.error("Select a challenge to grant");
     if (emails.length === 0) return toast.error("Enter at least one valid email address");
-    const mode = autoDeliver ? "auto-delivered from the account pool" : "queued for manual delivery";
-    if (!confirm(`Grant ${emails.length} ${challenge?.name ?? "challenge"} account${emails.length === 1 ? "" : "s"}? Recipients will be ${mode}.`)) return;
+    const mode = autoDeliver
+      ? "auto-delivered from the account pool"
+      : "queued for manual delivery";
+    if (
+      !confirm(
+        `Grant ${emails.length} ${challenge?.name ?? "challenge"} account${emails.length === 1 ? "" : "s"}? Recipients will be ${mode}.`,
+      )
+    )
+      return;
 
     const { data: sess } = await supabase.auth.getSession();
     if (!sess.session?.access_token) return toast.error("Please sign in again");
@@ -65,12 +72,14 @@ function GiveawaysPage() {
       setLastGranted(String(res.challengeName ?? ""));
       const delivered = res.results.filter((r) => r.outcome === "delivered").length;
       const pending = res.results.filter((r) => r.outcome === "pending").length;
-      const failed = res.results.filter((r) => r.outcome !== "delivered" && r.outcome !== "pending").length;
+      const failed = res.results.filter(
+        (r) => r.outcome !== "delivered" && r.outcome !== "pending",
+      ).length;
       toast.success(`${delivered} delivered · ${pending} queued · ${failed} failed`);
       setEmailsRaw("");
       setNote("");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Giveaway failed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Giveaway failed");
     } finally {
       setGranting(false);
     }
@@ -83,12 +92,15 @@ function GiveawaysPage() {
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="font-display text-base font-bold">Grant Free Accounts</div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Grant free challenge accounts to giveaway winners. Emails are resolved to existing accounts only — unknown emails are reported as failures and never create new users.
+          Grant free challenge accounts to giveaway winners. Emails are resolved to existing
+          accounts only — unknown emails are reported as failures and never create new users.
         </p>
 
         <div className="mt-4 space-y-3">
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Winner emails (comma or newline separated)</label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Winner emails (comma or newline separated)
+            </label>
             <textarea
               value={emailsRaw}
               onChange={(e) => setEmailsRaw(e.target.value)}
@@ -100,7 +112,9 @@ function GiveawaysPage() {
               <p className="mt-1 text-xs text-muted-foreground">
                 {emails.length} valid email{emails.length === 1 ? "" : "s"} detected
                 {emails.length !== parseEmails(emailsRaw).length ? "" : ""}
-                {parseEmails(emailsRaw).length < emailsRaw.split(/[\s,;]+/).filter(Boolean).length ? " — some lines were skipped (invalid or duplicate)" : ""}
+                {parseEmails(emailsRaw).length < emailsRaw.split(/[\s,;]+/).filter(Boolean).length
+                  ? " — some lines were skipped (invalid or duplicate)"
+                  : ""}
               </p>
             )}
           </div>
@@ -114,15 +128,18 @@ function GiveawaysPage() {
                 className="mt-1 flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 <option value="">Select challenge…</option>
-                {challengeList.map((c: any) => (
+                {challengeList.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {String(c.name ?? "Challenge")} — {c.currency === "USD" ? "$" : "₦"}{Number(c.account_size ?? 0).toLocaleString()}{c.category ? ` (${String(c.category).toUpperCase()})` : ""}
+                    {String(c.name ?? "Challenge")} — {c.currency === "USD" ? "$" : "₦"}
+                    {Number(c.account_size ?? 0).toLocaleString()}
+                    {c.category ? ` (${String(c.category).toUpperCase()})` : ""}
                   </option>
                 ))}
               </select>
               {challenge && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Currency: {challenge.currency ?? "NGN"} · Phase 1 account; pool lookup uses account size {Number(challenge.account_size ?? 0).toLocaleString()}
+                  Currency: {challenge.currency ?? "NGN"} · Phase 1 account; pool lookup uses
+                  account size {Number(challenge.account_size ?? 0).toLocaleString()}
                 </p>
               )}
             </div>
@@ -154,7 +171,9 @@ function GiveawaysPage() {
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Note (optional, for internal tracking)</label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Note (optional, for internal tracking)
+            </label>
             <Input
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -164,7 +183,9 @@ function GiveawaysPage() {
           </div>
 
           <Button onClick={submit} disabled={granting || emails.length === 0 || !challengeId}>
-            {granting ? "Granting…" : `Grant ${emails.length || ""} account${emails.length === 1 ? "" : "s"}`}
+            {granting
+              ? "Granting…"
+              : `Grant ${emails.length || ""} account${emails.length === 1 ? "" : "s"}`}
           </Button>
         </div>
       </div>
@@ -174,9 +195,16 @@ function GiveawaysPage() {
           <div className="font-display text-base font-bold">{lastGranted}</div>
           <p className="mt-1 text-xs text-muted-foreground">Last giveaway results</p>
           <div className="mt-3 space-y-2">
-            {results.length === 0 && <div className="rounded-lg border border-border p-4 text-center text-sm text-muted-foreground">No winners granted.</div>}
+            {results.length === 0 && (
+              <div className="rounded-lg border border-border p-4 text-center text-sm text-muted-foreground">
+                No winners granted.
+              </div>
+            )}
             {results.map((r) => (
-              <div key={r.email} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
+              <div
+                key={r.email}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
+              >
                 <div className="min-w-0">
                   <div className="truncate font-mono text-sm">{r.email}</div>
                   <div className="truncate text-xs text-muted-foreground">
@@ -184,7 +212,16 @@ function GiveawaysPage() {
                     {r.reference ? <span className="font-mono"> · {r.reference}</span> : null}
                   </div>
                 </div>
-                <Badge variant={r.outcome === "delivered" ? "default" : r.outcome === "pending" ? "secondary" : "destructive"} className="shrink-0">
+                <Badge
+                  variant={
+                    r.outcome === "delivered"
+                      ? "default"
+                      : r.outcome === "pending"
+                        ? "secondary"
+                        : "destructive"
+                  }
+                  className="shrink-0"
+                >
                   {r.outcome}
                 </Badge>
               </div>

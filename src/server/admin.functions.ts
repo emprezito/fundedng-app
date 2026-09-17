@@ -24,15 +24,13 @@ export const addSocialProofServer = createServerFn({ method: "POST" })
       const auth = await assertAdmin(data.accessToken);
       if (!auth.ok) return auth;
 
-      const { error: insertError } = await supabaseAdmin
-        .from("social_proof_items")
-        .insert({
-          label: data.label,
-          image_url: data.image_url,
-          storage_path: data.storage_path ?? null,
-          category: data.category,
-          display_order: data.display_order,
-        } as never);
+      const { error: insertError } = await supabaseAdmin.from("social_proof_items").insert({
+        label: data.label,
+        image_url: data.image_url,
+        storage_path: data.storage_path ?? null,
+        category: data.category,
+        display_order: data.display_order,
+      } as never);
 
       if (insertError) return { ok: false as const, error: insertError.message };
       return { ok: true as const };
@@ -50,7 +48,8 @@ async function assertAdmin(token: string) {
     .from("user_roles")
     .select("role")
     .eq("user_id", authData.user.id);
-  if (!roles?.some((r) => r.role === "admin")) return { ok: false as const, error: "Forbidden: admin role required" };
+  if (!roles?.some((r) => r.role === "admin"))
+    return { ok: false as const, error: "Forbidden: admin role required" };
   return { ok: true as const, userId: authData.user.id };
 }
 
@@ -72,12 +71,14 @@ async function incrementTotalPayouts(amount: number) {
     .eq("key", "total_payouts")
     .maybeSingle();
   const current = Number(row?.value ?? 0);
-  await supabaseAdmin
-    .from("app_config")
-    .upsert(
-      { key: "total_payouts", value: String(current + next), updated_at: new Date().toISOString() } as never,
-      { onConflict: "key" },
-    );
+  await supabaseAdmin.from("app_config").upsert(
+    {
+      key: "total_payouts",
+      value: String(current + next),
+      updated_at: new Date().toISOString(),
+    } as never,
+    { onConflict: "key" },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -118,10 +119,11 @@ export const requestPayoutServer = createServerFn({ method: "POST" })
         .select("id")
         .single();
 
-      if (insertErr || !payoutInsert) return { ok: false as const, error: insertErr?.message ?? "Insert failed" };
+      if (insertErr || !payoutInsert)
+        return { ok: false as const, error: insertErr?.message ?? "Insert failed" };
 
-      await sendEventEmail({ type: "payout_requested", payoutId: (payoutInsert as any).id }).catch((e) =>
-        console.error("[requestPayoutServer] email send failed", e),
+      await sendEventEmail({ type: "payout_requested", payoutId: (payoutInsert as any).id }).catch(
+        (e) => console.error("[requestPayoutServer] email send failed", e),
       );
 
       // Send Telegram with Approve/Reject buttons
@@ -137,23 +139,25 @@ export const requestPayoutServer = createServerFn({ method: "POST" })
       const payoutCurrency = (traderAcc as any)?.currency ?? "NGN";
       const startingBalance = Number((traderAcc as any)?.starting_balance ?? 0);
 
-      const amountDisplay = payoutCurrency === "USD"
-        ? `$${(data.amountNaira / 1550).toFixed(2)} (~N${data.amountNaira.toLocaleString()})`
-        : `N${data.amountNaira.toLocaleString()}`;
+      const amountDisplay =
+        payoutCurrency === "USD"
+          ? `$${(data.amountNaira / 1550).toFixed(2)} (~N${data.amountNaira.toLocaleString()})`
+          : `N${data.amountNaira.toLocaleString()}`;
 
-      const balanceDisplay = payoutCurrency === "USD"
-        ? `$${startingBalance.toLocaleString()}`
-        : `N${startingBalance.toLocaleString()}`;
+      const balanceDisplay =
+        payoutCurrency === "USD"
+          ? `$${startingBalance.toLocaleString()}`
+          : `N${startingBalance.toLocaleString()}`;
 
       await sendTelegramWithButtons(
         `Payout Request\n\n` +
-        `Trader: <b>${traderName}</b>\n` +
-        `MT5: <code>${mt5Login}</code>\n` +
-        `Account: ${challengeName} ${balanceDisplay}\n` +
-        `Amount: <b>${amountDisplay}</b>\n` +
-        `Profit: ${data.profitPercent.toFixed(2)}%\n` +
-        `Bank: ${data.bankDetails.bank_name} — ${data.bankDetails.account_number}\n` +
-        `Account Name: ${data.bankDetails.account_name}`,
+          `Trader: <b>${traderName}</b>\n` +
+          `MT5: <code>${mt5Login}</code>\n` +
+          `Account: ${challengeName} ${balanceDisplay}\n` +
+          `Amount: <b>${amountDisplay}</b>\n` +
+          `Profit: ${data.profitPercent.toFixed(2)}%\n` +
+          `Bank: ${data.bankDetails.bank_name} — ${data.bankDetails.account_number}\n` +
+          `Account Name: ${data.bankDetails.account_name}`,
         [
           [
             { text: "✅ Approve", callback_data: `approve_payout:${(payoutInsert as any).id}` },
@@ -215,7 +219,6 @@ export const getBreachResetQuoteServer = createServerFn({ method: "POST" })
     }
   });
 
-
 // ---------------------------------------------------------------------------
 // Claim breach reset — trader who already paid a reset retries provisioning
 // ---------------------------------------------------------------------------
@@ -255,7 +258,8 @@ export const claimBreachResetServer = createServerFn({ method: "POST" })
       if (!resetOrder) {
         return {
           ok: false as const,
-          error: "No paid reset order found for this account. If you haven't paid yet, use the Reset button above.",
+          error:
+            "No paid reset order found for this account. If you haven't paid yet, use the Reset button above.",
         };
       }
 
@@ -276,7 +280,10 @@ export const claimBreachResetServer = createServerFn({ method: "POST" })
         userId: auth.userId,
       }).catch((e) => {
         console.error("[claimBreachResetServer] provision failed", e);
-        return { ok: false as const, error: e instanceof Error ? e.message : "Provisioning failed" };
+        return {
+          ok: false as const,
+          error: e instanceof Error ? e.message : "Provisioning failed",
+        };
       });
 
       if (provisioned.ok) {
@@ -287,14 +294,18 @@ export const claimBreachResetServer = createServerFn({ method: "POST" })
       // Pending Account Delivery tab picks it up for manual delivery.
       await supabaseAdmin
         .from("account_requests")
-        .upsert({
-          user_id: auth.userId,
-          order_id: resetOrder.id,
-          challenge_id: resetOrder.challenge_id,
-          status: "pending",
-        }, { onConflict: "order_id" })
+        .upsert(
+          {
+            user_id: auth.userId,
+            order_id: resetOrder.id,
+            challenge_id: resetOrder.challenge_id,
+            status: "pending",
+          },
+          { onConflict: "order_id" },
+        )
         .then(({ error }) => {
-          if (error) console.warn("[claimBreachResetServer] account_requests upsert failed:", error.message);
+          if (error)
+            console.warn("[claimBreachResetServer] account_requests upsert failed:", error.message);
         });
 
       return { ok: true as const, status: "queued" as const };
@@ -304,7 +315,6 @@ export const claimBreachResetServer = createServerFn({ method: "POST" })
       return { ok: false as const, error: msg };
     }
   });
-
 
 // ---------------------------------------------------------------------------
 // Provision Payout Account — close old account + provision new from pool
@@ -323,14 +333,16 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
 
       const { data: payout } = await supabaseAdmin
         .from("payouts")
-        .select(`
+        .select(
+          `
           id, amount_naira, trader_account_id, user_id,
           trader_accounts(
             id, user_id, mt5_login, mt5_server, currency,
             starting_balance, current_phase, funded_tier, challenge_id, order_id,
             challenges(name)
           )
-        `)
+        `,
+        )
         .eq("id", data.payoutId)
         .maybeSingle();
 
@@ -355,13 +367,15 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
       // After a payout the trader moves up one funded tier.
       const nextTier = oldPhase >= 3 ? oldTier + 1 : 1;
       const oldLogin = account?.mt5_login ?? "?";
-      const balanceDisplay = currency === "USD"
-        ? `$${startingBalance.toLocaleString()}`
-        : `₦${startingBalance.toLocaleString()}`;
+      const balanceDisplay =
+        currency === "USD"
+          ? `$${startingBalance.toLocaleString()}`
+          : `₦${startingBalance.toLocaleString()}`;
       const payoutAmount = Number((payout as any)?.amount_naira ?? 0);
-      const payoutDisplay = currency === "USD"
-        ? `$${(payoutAmount / 1550).toFixed(2)}`
-        : `₦${payoutAmount.toLocaleString()}`;
+      const payoutDisplay =
+        currency === "USD"
+          ? `$${(payoutAmount / 1550).toFixed(2)}`
+          : `₦${payoutAmount.toLocaleString()}`;
 
       // 1. Deactivate old account
       await supabaseAdmin
@@ -387,7 +401,12 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
         // 3. Correct phase + new funded tier on the new account
         await supabaseAdmin
           .from("trader_accounts")
-          .update({ status: "funded", current_phase: oldPhase, funded_tier: nextTier, trading_days: 0 } as never)
+          .update({
+            status: "funded",
+            current_phase: oldPhase,
+            funded_tier: nextTier,
+            trading_days: 0,
+          } as never)
           .eq("id", poolResult.accountId);
 
         // 3b. Clear any outstanding delivery ticket for this order (rollover done).
@@ -402,19 +421,21 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
             .eq("order_id", account.order_id)
             .in("status", ["pending", "failed"])
             .then(({ error }) => {
-              if (error) console.warn("[provisionPayoutServer] account_requests fulfill failed:", error.message);
+              if (error)
+                console.warn(
+                  "[provisionPayoutServer] account_requests fulfill failed:",
+                  error.message,
+                );
             });
         }
 
         // 4. In-app notification
-        await supabaseAdmin
-          .from("notifications")
-          .insert({
-            user_id: traderUserId,
-            title: "🎉 Payout Processed — New Account Ready",
-            message: `Your payout of ${payoutDisplay} has been processed. A new account has been provisioned. New Login: ${poolResult.mt5Login} · Server: ${poolResult.mt5Server}. Your starting balance is ${balanceDisplay}. Check your dashboard for the password.`,
-            type: "success",
-          } as never);
+        await supabaseAdmin.from("notifications").insert({
+          user_id: traderUserId,
+          title: "🎉 Payout Processed — New Account Ready",
+          message: `Your payout of ${payoutDisplay} has been processed. A new account has been provisioned. New Login: ${poolResult.mt5Login} · Server: ${poolResult.mt5Server}. Your starting balance is ${balanceDisplay}. Check your dashboard for the password.`,
+          type: "success",
+        } as never);
 
         // 5. Web push
         await sendPushToUser(traderUserId, {
@@ -447,19 +468,28 @@ export const provisionPayoutServer = createServerFn({ method: "POST" })
         if (account?.order_id) {
           await supabaseAdmin
             .from("account_requests")
-            .upsert({
-              user_id: traderUserId,
-              order_id: account.order_id,
-              challenge_id: challengeId ?? "",
-              status: "pending",
-              provider_response: { kind: "payout", phase: oldPhase, funded_tier: nextTier },
-            }, { onConflict: "order_id" })
+            .upsert(
+              {
+                user_id: traderUserId,
+                order_id: account.order_id,
+                challenge_id: challengeId ?? "",
+                status: "pending",
+                provider_response: { kind: "payout", phase: oldPhase, funded_tier: nextTier },
+              },
+              { onConflict: "order_id" },
+            )
             .then(({ error }) => {
-              if (error) console.warn("[provisionPayoutServer] account_requests queue failed:", error.message);
+              if (error)
+                console.warn(
+                  "[provisionPayoutServer] account_requests queue failed:",
+                  error.message,
+                );
             });
         }
 
-        const queuedNotice = account?.order_id ? " A delivery ticket was added to the admin Pending tab." : "";
+        const queuedNotice = account?.order_id
+          ? " A delivery ticket was added to the admin Pending tab."
+          : "";
         return { ok: false as const, error: "Pool empty — no accounts available." + queuedNotice };
       }
     } catch (e) {
@@ -492,10 +522,12 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
 
       const { data: account, error: findErr } = await supabaseAdmin
         .from("trader_accounts")
-        .select(`
+        .select(
+          `
           id, user_id, mt5_login, mt5_server, currency, starting_balance,
           current_phase, funded_tier, challenge_id, order_id, status
-        `)
+        `,
+        )
         .eq("id", data.traderAccountId)
         .maybeSingle();
 
@@ -521,9 +553,10 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
       // Funded tiers start at 1; next tier is one higher.
       const nextTier = Math.max(1, oldTier + 1);
       const oldLogin = account.mt5_login ?? "?";
-      const balanceDisplay = currency === "USD"
-        ? `$${startingBalance.toLocaleString()}`
-        : `₦${startingBalance.toLocaleString()}`;
+      const balanceDisplay =
+        currency === "USD"
+          ? `$${startingBalance.toLocaleString()}`
+          : `₦${startingBalance.toLocaleString()}`;
 
       // 1. Deactivate old account
       await supabaseAdmin
@@ -548,7 +581,12 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
         // 3. Correct phase + funded tier on the new account
         await supabaseAdmin
           .from("trader_accounts")
-          .update({ status: "funded", current_phase: 3, funded_tier: nextTier, trading_days: 0 } as never)
+          .update({
+            status: "funded",
+            current_phase: 3,
+            funded_tier: nextTier,
+            trading_days: 0,
+          } as never)
           .eq("id", poolResult.accountId);
 
         // 3b. Clear any outstanding delivery ticket for this order (rollover done).
@@ -563,19 +601,21 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
             .eq("order_id", account.order_id)
             .in("status", ["pending", "failed"])
             .then(({ error }) => {
-              if (error) console.warn("[provisionNextTierServer] account_requests fulfill failed:", error.message);
+              if (error)
+                console.warn(
+                  "[provisionNextTierServer] account_requests fulfill failed:",
+                  error.message,
+                );
             });
         }
 
         // 4. In-app notification
-        await supabaseAdmin
-          .from("notifications")
-          .insert({
-            user_id: traderUserId,
-            title: "🎉 New Funded Account Ready",
-            message: `Your account has been advanced to Funded ${nextTier}. A new account has been provisioned. New Login: ${poolResult.mt5Login} · Server: ${poolResult.mt5Server}. Your starting balance is ${balanceDisplay}. Check your dashboard for the password.`,
-            type: "success",
-          } as never);
+        await supabaseAdmin.from("notifications").insert({
+          user_id: traderUserId,
+          title: "🎉 New Funded Account Ready",
+          message: `Your account has been advanced to Funded ${nextTier}. A new account has been provisioned. New Login: ${poolResult.mt5Login} · Server: ${poolResult.mt5Server}. Your starting balance is ${balanceDisplay}. Check your dashboard for the password.`,
+          type: "success",
+        } as never);
 
         // 5. Web push
         await sendPushToUser(traderUserId, {
@@ -606,20 +646,32 @@ export const provisionNextTierServer = createServerFn({ method: "POST" })
         if (account.order_id) {
           await supabaseAdmin
             .from("account_requests")
-            .upsert({
-              user_id: traderUserId,
-              order_id: account.order_id,
-              challenge_id: account.challenge_id ?? "",
-              status: "pending",
-              provider_response: { kind: "tier", phase: 3, funded_tier: nextTier },
-            }, { onConflict: "order_id" })
+            .upsert(
+              {
+                user_id: traderUserId,
+                order_id: account.order_id,
+                challenge_id: account.challenge_id ?? "",
+                status: "pending",
+                provider_response: { kind: "tier", phase: 3, funded_tier: nextTier },
+              },
+              { onConflict: "order_id" },
+            )
             .then(({ error }) => {
-              if (error) console.warn("[provisionNextTierServer] account_requests queue failed:", error.message);
+              if (error)
+                console.warn(
+                  "[provisionNextTierServer] account_requests queue failed:",
+                  error.message,
+                );
             });
         }
 
-        const queuedNotice = account.order_id ? " A delivery ticket was added to the admin Pending tab." : "";
-        return { ok: false as const, error: "Pool empty — no accounts available at Funded " + nextTier + "." + queuedNotice };
+        const queuedNotice = account.order_id
+          ? " A delivery ticket was added to the admin Pending tab."
+          : "";
+        return {
+          ok: false as const,
+          error: "Pool empty — no accounts available at Funded " + nextTier + "." + queuedNotice,
+        };
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Provision failed";
@@ -665,9 +717,12 @@ export const confirmMt5ResetServer = createServerFn({ method: "POST" })
       const login = (account as any)?.mt5_login ?? "?";
 
       try {
-        await supabaseAdmin.rpc("send_telegram" as never, {
-          p_message: `✅ <b>MT5 Reset Confirmed</b>\nTrader: ${name}\nLogin: <code>${login}</code>\nMonitor resumed — equity sync active again.`,
-        } as never);
+        await supabaseAdmin.rpc(
+          "send_telegram" as never,
+          {
+            p_message: `✅ <b>MT5 Reset Confirmed</b>\nTrader: ${name}\nLogin: <code>${login}</code>\nMonitor resumed — equity sync active again.`,
+          } as never,
+        );
       } catch (e) {
         console.error("[confirmMt5ResetServer] telegram failed", e);
       }
@@ -697,12 +752,15 @@ export const approvePhase2Server = createServerFn({ method: "POST" })
 
       const { data: acc } = await supabaseAdmin
         .from("trader_accounts")
-        .select("user_id, starting_balance, currency, challenge_id, order_id, current_phase, status")
+        .select(
+          "user_id, starting_balance, currency, challenge_id, order_id, current_phase, status",
+        )
         .eq("id", data.accountId)
         .maybeSingle();
 
       if (!acc) return { ok: false as const, error: "Account not found" };
-      if ((acc as any).current_phase >= 2) return { ok: false as const, error: "Already in Phase 2 or beyond" };
+      if ((acc as any).current_phase >= 2)
+        return { ok: false as const, error: "Already in Phase 2 or beyond" };
 
       const isUsd = (acc as any).currency === "USD";
       const startingBalance = Number((acc as any).starting_balance);
@@ -764,9 +822,12 @@ export const approvePhase2Server = createServerFn({ method: "POST" })
       );
 
       // 6. Telegram alert to admin
-      await supabaseAdmin.rpc("send_telegram" as never, {
-        p_message: `🎯 <b>Phase 2 Provisioned</b>\nTrader: ${(acc as any).user_id}\nNew Login: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}\nSize: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}`,
-      } as never);
+      await supabaseAdmin.rpc(
+        "send_telegram" as never,
+        {
+          p_message: `🎯 <b>Phase 2 Provisioned</b>\nTrader: ${(acc as any).user_id}\nNew Login: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}\nSize: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}`,
+        } as never,
+      );
 
       // 7. Post to live activity feed
       {
@@ -777,8 +838,11 @@ export const approvePhase2Server = createServerFn({ method: "POST" })
           .maybeSingle();
 
         const fullName = (profileData as any)?.full_name ?? "Trader";
-        const avatarInitials = fullName.split(" ").slice(0, 2)
-          .map((w: string) => w[0]?.toUpperCase() ?? "").join("");
+        const avatarInitials = fullName
+          .split(" ")
+          .slice(0, 2)
+          .map((w: string) => w[0]?.toUpperCase() ?? "")
+          .join("");
 
         const { data: challengeData } = await supabaseAdmin
           .from("challenges")
@@ -796,22 +860,27 @@ export const approvePhase2Server = createServerFn({ method: "POST" })
         } as never);
 
         const isUsdCurrency = (acc as any).currency === "USD";
-        const sizeDisplay = isUsdCurrency ? `$${startingBalance.toLocaleString()}` : `₦${startingBalance.toLocaleString()}`;
+        const sizeDisplay = isUsdCurrency
+          ? `$${startingBalance.toLocaleString()}`
+          : `₦${startingBalance.toLocaleString()}`;
 
-        await sendDiscordNotification(
-          `🎯 **Phase 2 Approved**`,
-          [{
+        await sendDiscordNotification(`🎯 **Phase 2 Approved**`, [
+          {
             title: `🎯 Phase 2 Approved — ${fullName}`,
             color: 0x3498db,
             fields: [
               { name: "Trader", value: fullName, inline: true },
               { name: "Account", value: `${sizeDisplay}`, inline: true },
-              { name: "Challenge", value: (challengeData as any)?.name ?? "Standard", inline: true },
+              {
+                name: "Challenge",
+                value: (challengeData as any)?.name ?? "Standard",
+                inline: true,
+              },
               { name: "MT5", value: `\`${poolResult.mt5Login}\``, inline: true },
             ],
             timestamp: new Date().toISOString(),
-          }],
-        ).catch((e) => console.error("[approvePhase2Server] discord failed", e));
+          },
+        ]).catch((e) => console.error("[approvePhase2Server] discord failed", e));
       }
 
       return { ok: true as const, newAccountId: poolResult.accountId };
@@ -839,7 +908,9 @@ export const approveFundedServer = createServerFn({ method: "POST" })
 
       const { data: acc } = await supabaseAdmin
         .from("trader_accounts")
-        .select("user_id, starting_balance, currency, challenge_id, order_id, current_phase, status")
+        .select(
+          "user_id, starting_balance, currency, challenge_id, order_id, current_phase, status",
+        )
         .eq("id", data.accountId)
         .maybeSingle();
 
@@ -907,9 +978,12 @@ export const approveFundedServer = createServerFn({ method: "POST" })
       );
 
       // 6. Telegram
-      await supabaseAdmin.rpc("send_telegram" as never, {
-        p_message: `🏆 <b>Trader Funded</b>\nUser: ${(acc as any).user_id}\nNew Login: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}\nSize: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}`,
-      } as never);
+      await supabaseAdmin.rpc(
+        "send_telegram" as never,
+        {
+          p_message: `🏆 <b>Trader Funded</b>\nUser: ${(acc as any).user_id}\nNew Login: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}\nSize: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}`,
+        } as never,
+      );
 
       // 7. Post to live activity feed
       {
@@ -920,8 +994,11 @@ export const approveFundedServer = createServerFn({ method: "POST" })
           .maybeSingle();
 
         const fullName = (profileData as any)?.full_name ?? "Trader";
-        const avatarInitials = fullName.split(" ").slice(0, 2)
-          .map((w: string) => w[0]?.toUpperCase() ?? "").join("");
+        const avatarInitials = fullName
+          .split(" ")
+          .slice(0, 2)
+          .map((w: string) => w[0]?.toUpperCase() ?? "")
+          .join("");
 
         const { data: challengeData } = await supabaseAdmin
           .from("challenges")
@@ -939,22 +1016,27 @@ export const approveFundedServer = createServerFn({ method: "POST" })
         } as never);
 
         const isUsdCurrency = (acc as any).currency === "USD";
-        const sizeDisplay = isUsdCurrency ? `$${startingBalance.toLocaleString()}` : `₦${startingBalance.toLocaleString()}`;
+        const sizeDisplay = isUsdCurrency
+          ? `$${startingBalance.toLocaleString()}`
+          : `₦${startingBalance.toLocaleString()}`;
 
-        await sendDiscordNotification(
-          `🏆 **New Funded Trader**`,
-          [{
+        await sendDiscordNotification(`🏆 **New Funded Trader**`, [
+          {
             title: `🏆 New Funded Trader — ${fullName}`,
             color: 0x1ec97e,
             fields: [
               { name: "Trader", value: fullName, inline: true },
               { name: "Account Size", value: `${sizeDisplay}`, inline: true },
-              { name: "Challenge", value: (challengeData as any)?.name ?? "Standard", inline: true },
+              {
+                name: "Challenge",
+                value: (challengeData as any)?.name ?? "Standard",
+                inline: true,
+              },
               { name: "MT5", value: `\`${poolResult.mt5Login}\``, inline: true },
             ],
             timestamp: new Date().toISOString(),
-          }],
-        ).catch((e) => console.error("[approveFundedServer] discord failed", e));
+          },
+        ]).catch((e) => console.error("[approveFundedServer] discord failed", e));
       }
 
       return { ok: true as const, newAccountId: poolResult.accountId };
@@ -982,20 +1064,25 @@ export const requestPhase2AutoProvisionServer = createServerFn({ method: "POST" 
 
       const { data: acc } = await supabaseAdmin
         .from("trader_accounts")
-        .select("id, user_id, starting_balance, currency, challenge_id, order_id, current_phase, status, trading_days, challenges(min_trading_days, profit_target_percent, max_drawdown_percent, max_daily_drawdown_percent, phases)")
+        .select(
+          "id, user_id, starting_balance, currency, challenge_id, order_id, current_phase, status, trading_days, challenges(min_trading_days, profit_target_percent, max_drawdown_percent, max_daily_drawdown_percent, phases)",
+        )
         .eq("id", data.accountId)
         .maybeSingle();
 
       if (!acc) return { ok: false as const, error: "Account not found" };
-      if ((acc as any).user_id !== auth.userId) return { ok: false as const, error: "Not your account" };
-      if ((acc as any).status !== "active") return { ok: false as const, error: "Account is not active" };
+      if ((acc as any).user_id !== auth.userId)
+        return { ok: false as const, error: "Not your account" };
+      if ((acc as any).status !== "active")
+        return { ok: false as const, error: "Account is not active" };
       if ((acc as any).current_phase !== 1) return { ok: false as const, error: "Not in Phase 1" };
 
       const challenge = (acc as any).challenges;
       if (!challenge) return { ok: false as const, error: "Challenge not found" };
 
       const minDays = (acc as any).currency === "USD" ? 5 : (challenge.min_trading_days ?? 3);
-      if (((acc as any).trading_days ?? 0) < minDays) return { ok: false as const, error: `Minimum ${minDays} trading days required` };
+      if (((acc as any).trading_days ?? 0) < minDays)
+        return { ok: false as const, error: `Minimum ${minDays} trading days required` };
 
       const isUsd = (acc as any).currency === "USD";
       const startingBalance = Number((acc as any).starting_balance);
@@ -1012,20 +1099,33 @@ export const requestPhase2AutoProvisionServer = createServerFn({ method: "POST" 
       });
 
       if (!poolResult.ok) {
-        await supabaseAdmin.rpc("request_phase2" as never, { _account_id: data.accountId } as never);
-        return { ok: false as const, error: `Pool unavailable, request sent to admin: ${poolResult.error}`, fallback: true };
+        await supabaseAdmin.rpc(
+          "request_phase2" as never,
+          { _account_id: data.accountId } as never,
+        );
+        return {
+          ok: false as const,
+          error: `Pool unavailable, request sent to admin: ${poolResult.error}`,
+          fallback: true,
+        };
       }
 
-      await supabaseAdmin.from("trader_accounts").update({
-        status: "passed",
-        phase1_passed_at: new Date().toISOString(),
-        phase2_requested_at: null,
-      } as never).eq("id", data.accountId);
+      await supabaseAdmin
+        .from("trader_accounts")
+        .update({
+          status: "passed",
+          phase1_passed_at: new Date().toISOString(),
+          phase2_requested_at: null,
+        } as never)
+        .eq("id", data.accountId);
 
-      await supabaseAdmin.from("trader_accounts").update({
-        current_phase: 2,
-        trading_days: 0,
-      } as never).eq("id", poolResult.accountId);
+      await supabaseAdmin
+        .from("trader_accounts")
+        .update({
+          current_phase: 2,
+          trading_days: 0,
+        } as never)
+        .eq("id", poolResult.accountId);
 
       await supabaseAdmin.from("notifications").insert({
         user_id: (acc as any).user_id,
@@ -1034,13 +1134,23 @@ export const requestPhase2AutoProvisionServer = createServerFn({ method: "POST" 
         type: "success",
       } as never);
 
-      await sendEventEmail({ type: "phase1_passed", accountId: poolResult.accountId }).catch(() => {});
+      await sendEventEmail({ type: "phase1_passed", accountId: poolResult.accountId }).catch(
+        () => {},
+      );
 
-      await supabaseAdmin.rpc("send_telegram" as never, {
-        p_message: `🎯 <b>Phase 2 Auto-Provisioned</b>\nTrader: ${(acc as any).user_id}\nNew Login: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}\nSize: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}`,
-      } as never);
+      await supabaseAdmin.rpc(
+        "send_telegram" as never,
+        {
+          p_message: `🎯 <b>Phase 2 Auto-Provisioned</b>\nTrader: ${(acc as any).user_id}\nNew Login: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}\nSize: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}`,
+        } as never,
+      );
 
-      try { await sendPushToUser((acc as any).user_id, { title: "Phase 1 Passed!", body: `Your Phase 2 account is ready. Login: ${poolResult.mt5Login}` }); } catch {}
+      try {
+        await sendPushToUser((acc as any).user_id, {
+          title: "Phase 1 Passed!",
+          body: `Your Phase 2 account is ready. Login: ${poolResult.mt5Login}`,
+        });
+      } catch {}
 
       return { ok: true as const, newAccountId: poolResult.accountId };
     } catch (e) {
@@ -1067,20 +1177,26 @@ export const requestFundedAutoProvisionServer = createServerFn({ method: "POST" 
 
       const { data: acc } = await supabaseAdmin
         .from("trader_accounts")
-        .select("id, user_id, starting_balance, currency, challenge_id, order_id, current_phase, status, trading_days, challenges(min_trading_days, profit_target_percent, phases)")
+        .select(
+          "id, user_id, starting_balance, currency, challenge_id, order_id, current_phase, status, trading_days, challenges(min_trading_days, profit_target_percent, phases)",
+        )
         .eq("id", data.accountId)
         .maybeSingle();
 
       if (!acc) return { ok: false as const, error: "Account not found" };
-      if ((acc as any).user_id !== auth.userId) return { ok: false as const, error: "Not your account" };
-      if ((acc as any).status !== "active") return { ok: false as const, error: "Account is not active" };
-      if ((acc as any).current_phase < 2) return { ok: false as const, error: "Not yet in Phase 2" };
+      if ((acc as any).user_id !== auth.userId)
+        return { ok: false as const, error: "Not your account" };
+      if ((acc as any).status !== "active")
+        return { ok: false as const, error: "Account is not active" };
+      if ((acc as any).current_phase < 2)
+        return { ok: false as const, error: "Not yet in Phase 2" };
 
       const challenge = (acc as any).challenges;
       if (!challenge) return { ok: false as const, error: "Challenge not found" };
 
       const minDays = (acc as any).currency === "USD" ? 5 : (challenge.min_trading_days ?? 3);
-      if (((acc as any).trading_days ?? 0) < minDays) return { ok: false as const, error: `Minimum ${minDays} trading days required` };
+      if (((acc as any).trading_days ?? 0) < minDays)
+        return { ok: false as const, error: `Minimum ${minDays} trading days required` };
 
       const isUsd = (acc as any).currency === "USD";
       const startingBalance = Number((acc as any).starting_balance);
@@ -1097,22 +1213,35 @@ export const requestFundedAutoProvisionServer = createServerFn({ method: "POST" 
       });
 
       if (!poolResult.ok) {
-        await supabaseAdmin.rpc("request_funded" as never, { _account_id: data.accountId } as never);
-        return { ok: false as const, error: `Pool unavailable, request sent to admin: ${poolResult.error}`, fallback: true };
+        await supabaseAdmin.rpc(
+          "request_funded" as never,
+          { _account_id: data.accountId } as never,
+        );
+        return {
+          ok: false as const,
+          error: `Pool unavailable, request sent to admin: ${poolResult.error}`,
+          fallback: true,
+        };
       }
 
-      await supabaseAdmin.from("trader_accounts").update({
-        status: "passed",
-        phase2_passed_at: new Date().toISOString(),
-        funded_requested_at: null,
-      } as never).eq("id", data.accountId);
+      await supabaseAdmin
+        .from("trader_accounts")
+        .update({
+          status: "passed",
+          phase2_passed_at: new Date().toISOString(),
+          funded_requested_at: null,
+        } as never)
+        .eq("id", data.accountId);
 
-      await supabaseAdmin.from("trader_accounts").update({
-        status: "funded",
-        current_phase: 3,
-        funded_at: new Date().toISOString(),
-        trading_days: 0,
-      } as never).eq("id", poolResult.accountId);
+      await supabaseAdmin
+        .from("trader_accounts")
+        .update({
+          status: "funded",
+          current_phase: 3,
+          funded_at: new Date().toISOString(),
+          trading_days: 0,
+        } as never)
+        .eq("id", poolResult.accountId);
 
       await supabaseAdmin.from("notifications").insert({
         user_id: (acc as any).user_id,
@@ -1123,11 +1252,19 @@ export const requestFundedAutoProvisionServer = createServerFn({ method: "POST" 
 
       await sendEventEmail({ type: "funded", accountId: poolResult.accountId }).catch(() => {});
 
-      await supabaseAdmin.rpc("send_telegram" as never, {
-        p_message: `🏆 <b>Trader Funded (Auto-Provisioned)</b>\nUser: ${(acc as any).user_id}\nNew Login: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}\nSize: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}`,
-      } as never);
+      await supabaseAdmin.rpc(
+        "send_telegram" as never,
+        {
+          p_message: `🏆 <b>Trader Funded (Auto-Provisioned)</b>\nUser: ${(acc as any).user_id}\nNew Login: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}\nSize: ${isUsd ? "$" : "₦"}${startingBalance.toLocaleString()}`,
+        } as never,
+      );
 
-      try { await sendPushToUser((acc as any).user_id, { title: "You're Funded!", body: `Your funded account is ready. Login: ${poolResult.mt5Login}` }); } catch {}
+      try {
+        await sendPushToUser((acc as any).user_id, {
+          title: "You're Funded!",
+          body: `Your funded account is ready. Login: ${poolResult.mt5Login}`,
+        });
+      } catch {}
 
       return { ok: true as const, newAccountId: poolResult.accountId };
     } catch (e) {
@@ -1163,9 +1300,11 @@ export const markBreachedServer = createServerFn({ method: "POST" })
         .eq("id", data.accountId);
       if (error) return { ok: false as const, error: error.message };
 
-      await sendEventEmail({ type: "breached", accountId: data.accountId, reason: data.reason.trim() }).catch((e) =>
-        console.error("[markBreachedServer] email send failed", e),
-      );
+      await sendEventEmail({
+        type: "breached",
+        accountId: data.accountId,
+        reason: data.reason.trim(),
+      }).catch((e) => console.error("[markBreachedServer] email send failed", e));
 
       return { ok: true as const };
     } catch (e) {
@@ -1195,7 +1334,8 @@ export const updateSocialProofServer = createServerFn({ method: "POST" })
       const updates: Record<string, unknown> = {};
       if (data.display_order !== undefined) updates.display_order = data.display_order;
       if (data.is_visible !== undefined) updates.is_visible = data.is_visible;
-      if (Object.keys(updates).length === 0) return { ok: false as const, error: "No fields to update" };
+      if (Object.keys(updates).length === 0)
+        return { ok: false as const, error: "No fields to update" };
 
       const { error } = await supabaseAdmin
         .from("social_proof_items")
@@ -1231,10 +1371,7 @@ export const deleteSocialProofServer = createServerFn({ method: "POST" })
         await supabaseAdmin.storage.from("social-proof").remove([data.storage_path]);
       }
 
-      const { error } = await supabaseAdmin
-        .from("social_proof_items")
-        .delete()
-        .eq("id", data.id);
+      const { error } = await supabaseAdmin.from("social_proof_items").delete().eq("id", data.id);
 
       if (error) return { ok: false as const, error: error.message };
       return { ok: true as const };
@@ -1263,12 +1400,14 @@ export const sendPhaseRequestNotificationServer = createServerFn({ method: "POST
 
       const { data: acc } = await supabaseAdmin
         .from("trader_accounts")
-        .select(`
+        .select(
+          `
           id, mt5_login, currency, starting_balance, current_phase,
           trading_days, scalping_warnings,
           challenges(name, min_trading_days, profit_target_percent),
           profiles(full_name)
-        `)
+        `,
+        )
         .eq("id", data.accountId)
         .maybeSingle();
 
@@ -1289,21 +1428,22 @@ export const sendPhaseRequestNotificationServer = createServerFn({ method: "POST
       const approveAction = isPhase2 ? "approve_phase2" : "approve_funded";
       const rejectAction = isPhase2 ? "reject_phase2" : "reject_funded";
 
-      const balanceDisplay = currency === "USD"
-        ? `$${startingBalance.toLocaleString()}`
-        : `N${startingBalance.toLocaleString()}`;
+      const balanceDisplay =
+        currency === "USD"
+          ? `$${startingBalance.toLocaleString()}`
+          : `N${startingBalance.toLocaleString()}`;
 
       const daysCheck = tradingDays >= minDays ? "+" : "!";
       const scalpingCheck = scalpingWarnings < 4 ? "+" : "!";
 
       await sendTelegramWithButtons(
         `${title}\n\n` +
-        `Trader: <b>${traderName}</b>\n` +
-        `MT5: <code>${mt5Login}</code>\n` +
-        `Account: ${challengeName} ${balanceDisplay}\n` +
-        `Profit Target: ${profitTarget}%\n` +
-        `${daysCheck} Trading Days: ${tradingDays}/${minDays}\n` +
-        `${scalpingCheck} Scalping: ${scalpingWarnings}/4\n`,
+          `Trader: <b>${traderName}</b>\n` +
+          `MT5: <code>${mt5Login}</code>\n` +
+          `Account: ${challengeName} ${balanceDisplay}\n` +
+          `Profit Target: ${profitTarget}%\n` +
+          `${daysCheck} Trading Days: ${tradingDays}/${minDays}\n` +
+          `${scalpingCheck} Scalping: ${scalpingWarnings}/4\n`,
         [
           [
             { text: "Approve & Provision", callback_data: `${approveAction}:${data.accountId}` },
@@ -1323,7 +1463,9 @@ export const sendPhaseRequestNotificationServer = createServerFn({ method: "POST
 // Manual activity logging — admin logs trader milestones + generates cert
 // ---------------------------------------------------------------------------
 function randomHex6(): string {
-  return Array.from({ length: 6 }, () => Math.floor(Math.random() * 16).toString(16)).join("").toUpperCase();
+  return Array.from({ length: 6 }, () => Math.floor(Math.random() * 16).toString(16))
+    .join("")
+    .toUpperCase();
 }
 
 const AddManualActivityInput = z.object({
@@ -1350,15 +1492,14 @@ export const addManualActivityServer = createServerFn({ method: "POST" })
         .join("");
 
       const currentPhase =
-        data.eventType === "phase1_to_phase2" ? 2
-        : data.eventType === "phase2_to_funded" ? 3
-        : 3;
+        data.eventType === "phase1_to_phase2" ? 2 : data.eventType === "phase2_to_funded" ? 3 : 3;
 
       const certKind = data.eventType === "payout_approved" ? "payout" : "funded";
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const certNumber = certKind === "payout"
-        ? `FNG-PAY-${dateStr}-${randomHex6()}`
-        : `FNG-FND-${dateStr}-${randomHex6()}`;
+      const certNumber =
+        certKind === "payout"
+          ? `FNG-PAY-${dateStr}-${randomHex6()}`
+          : `FNG-FND-${dateStr}-${randomHex6()}`;
 
       const certMeta = {
         certificate_number: certNumber,
@@ -1394,24 +1535,29 @@ export const addManualActivityServer = createServerFn({ method: "POST" })
         phase2_to_funded: { emoji: "🏆", title: "New Funded Trader", color: 0x1ec97e },
         payout_approved: { emoji: "💵", title: "Payout Approved", color: 0xf1c40f },
       };
-      const cfg = eventLabels[data.eventType] ?? { emoji: "📌", title: "Milestone", color: 0x95a5a6 };
+      const cfg = eventLabels[data.eventType] ?? {
+        emoji: "📌",
+        title: "Milestone",
+        color: 0x95a5a6,
+      };
       const payoutAmt = data.payoutAmount ? `₦${data.payoutAmount.toLocaleString()}` : null;
 
-      await sendDiscordNotification(
-        `${cfg.emoji} **${cfg.title}**`,
-        [{
+      await sendDiscordNotification(`${cfg.emoji} **${cfg.title}**`, [
+        {
           title: `${cfg.emoji} ${cfg.title} — ${data.traderName}`,
           color: cfg.color,
           fields: [
             { name: "Trader", value: data.traderName, inline: true },
             { name: "Account Size", value: `₦${data.accountSize.toLocaleString()}`, inline: true },
             { name: "Challenge", value: data.challengeName || "Standard", inline: true },
-            ...(data.mt5Login ? [{ name: "MT5", value: `\`${data.mt5Login}\``, inline: true } as const] : []),
+            ...(data.mt5Login
+              ? [{ name: "MT5", value: `\`${data.mt5Login}\``, inline: true } as const]
+              : []),
             ...(payoutAmt ? [{ name: "Payout", value: payoutAmt, inline: true } as const] : []),
           ],
           timestamp: new Date().toISOString(),
-        }],
-      ).catch((e) => console.error("[addManualActivityServer] discord failed", e));
+        },
+      ]).catch((e) => console.error("[addManualActivityServer] discord failed", e));
 
       return { ok: true as const, certificate: certMeta };
     } catch (e) {
@@ -1447,7 +1593,8 @@ export const advanceManualPhaseServer = createServerFn({ method: "POST" })
       const meta = (row as any).metadata ?? {};
       const currentPhase = meta.current_phase ?? 1;
 
-      if (currentPhase >= 3) return { ok: false as const, error: "Already funded — cannot advance further" };
+      if (currentPhase >= 3)
+        return { ok: false as const, error: "Already funded — cannot advance further" };
 
       const initials = (row as any).anonymized_name
         .split(" ")
@@ -1489,22 +1636,31 @@ export const advanceManualPhaseServer = createServerFn({ method: "POST" })
         phase1_to_phase2: { emoji: "🎯", title: "Phase 2 Approved", color: 0x3498db },
         phase2_to_funded: { emoji: "🏆", title: "New Funded Trader", color: 0x1ec97e },
       };
-      const cfg = eventLabels[newEventType] ?? { emoji: "📌", title: "Phase Advanced", color: 0x95a5a6 };
+      const cfg = eventLabels[newEventType] ?? {
+        emoji: "📌",
+        title: "Phase Advanced",
+        color: 0x95a5a6,
+      };
 
-      await sendDiscordNotification(
-        `${cfg.emoji} **${cfg.title}**`,
-        [{
+      await sendDiscordNotification(`${cfg.emoji} **${cfg.title}**`, [
+        {
           title: `${cfg.emoji} ${cfg.title} — ${(row as any).anonymized_name}`,
           color: cfg.color,
           fields: [
             { name: "Trader", value: (row as any).anonymized_name, inline: true },
-            { name: "Account Size", value: `₦${Number((row as any).account_size).toLocaleString()}`, inline: true },
+            {
+              name: "Account Size",
+              value: `₦${Number((row as any).account_size).toLocaleString()}`,
+              inline: true,
+            },
             { name: "Challenge", value: (row as any).challenge_name || "Standard", inline: true },
-            ...(meta.mt5_login ? [{ name: "MT5", value: `\`${meta.mt5_login}\``, inline: true } as const] : []),
+            ...(meta.mt5_login
+              ? [{ name: "MT5", value: `\`${meta.mt5_login}\``, inline: true } as const]
+              : []),
           ],
           timestamp: new Date().toISOString(),
-        }],
-      ).catch((e) => console.error("[advanceManualPhaseServer] discord failed", e));
+        },
+      ]).catch((e) => console.error("[advanceManualPhaseServer] discord failed", e));
 
       return { ok: true as const, certificate: newCertMeta };
     } catch (e) {
@@ -1572,10 +1728,7 @@ export const deleteManualLeaderboardServer = createServerFn({ method: "POST" })
       const auth = await assertAdmin(data.accessToken);
       if (!auth.ok) return auth;
 
-      const { error } = await supabaseAdmin
-        .from("manual_leaderboard")
-        .delete()
-        .eq("id", data.id);
+      const { error } = await supabaseAdmin.from("manual_leaderboard").delete().eq("id", data.id);
 
       if (error) return { ok: false as const, error: error.message };
       return { ok: true as const };
@@ -1613,7 +1766,9 @@ function dedupeEmails(emails: string[]) {
   return out;
 }
 
-async function findUserIdByEmail(email: string): Promise<{ userId: string | null; error?: string }> {
+async function findUserIdByEmail(
+  email: string,
+): Promise<{ userId: string | null; error?: string }> {
   try {
     let page = 1;
     // Paginate so we never silently miss a match once the user base grows
@@ -1651,7 +1806,8 @@ export const grantGiveawayServer = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => GrantGiveawayInput.parse(input))
   .handler(async ({ data }) => {
     const emails = dedupeEmails(data.emails);
-    if (emails.length === 0) return { ok: false as const, error: "No valid email addresses provided" };
+    if (emails.length === 0)
+      return { ok: false as const, error: "No valid email addresses provided" };
     try {
       const auth = await assertAdmin(data.accessToken);
       if (!auth.ok) return auth;
@@ -1666,7 +1822,12 @@ export const grantGiveawayServer = createServerFn({ method: "POST" })
       const currency = challenge.currency ?? "NGN";
       const accountSize = Number(challenge.account_size ?? 0);
 
-      const results: Array<{ email: string; outcome: "delivered" | "pending" | "not_found" | "error"; message: string; reference?: string }> = [];
+      const results: Array<{
+        email: string;
+        outcome: "delivered" | "pending" | "not_found" | "error";
+        message: string;
+        reference?: string;
+      }> = [];
 
       for (const email of emails) {
         const { userId, error: lookupError } = await findUserIdByEmail(email);
@@ -1699,7 +1860,11 @@ export const grantGiveawayServer = createServerFn({ method: "POST" })
           .single();
 
         if (orderError || !newOrder) {
-          results.push({ email, outcome: "error", message: orderError?.message ?? "Failed to create the order" });
+          results.push({
+            email,
+            outcome: "error",
+            message: orderError?.message ?? "Failed to create the order",
+          });
           continue;
         }
 
@@ -1720,12 +1885,27 @@ export const grantGiveawayServer = createServerFn({ method: "POST" })
             poolResult = null;
           }
           if (poolResult?.ok) {
-            results.push({ email, outcome: "delivered", message: `Delivered — MT5 ${poolResult.mt5Login}`, reference });
+            results.push({
+              email,
+              outcome: "delivered",
+              message: `Delivered — MT5 ${poolResult.mt5Login}`,
+              reference,
+            });
           } else {
-            results.push({ email, outcome: "pending", message: poolResult?.error ?? "Pool unavailable — queued for manual delivery", reference });
+            results.push({
+              email,
+              outcome: "pending",
+              message: poolResult?.error ?? "Pool unavailable — queued for manual delivery",
+              reference,
+            });
           }
         } else {
-          results.push({ email, outcome: "pending", message: "Order created for manual delivery", reference });
+          results.push({
+            email,
+            outcome: "pending",
+            message: "Order created for manual delivery",
+            reference,
+          });
         }
       }
 
@@ -1740,7 +1920,11 @@ export const grantGiveawayServer = createServerFn({ method: "POST" })
           currency,
           auto_deliver: data.autoDeliver,
           emails,
-          outcomes: results.map((r) => ({ email: r.email, outcome: r.outcome, reference: r.reference })),
+          outcomes: results.map((r) => ({
+            email: r.email,
+            outcome: r.outcome,
+            reference: r.reference,
+          })),
         },
       } as never);
 
