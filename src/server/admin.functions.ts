@@ -1585,3 +1585,169 @@ export const deleteManualLeaderboardServer = createServerFn({ method: "POST" })
       return { ok: false as const, error: msg };
     }
   });
+
+// ---------------------------------------------------------------------------
+// Giveaways — grant free challenge accounts to selected winner emails.
+// Resolves each email to an auth user id (never creates users), inserts a
+// paid order at 100% discount with a unique GIVEAWAY reference, then either
+// auto-delivers from the account pool or queues the request for manual
+// delivery in the Pending tab. Returns a per-winner result list.
+// ---------------------------------------------------------------------------
+const GrantGiveawayInput = z.object({
+  accessToken: z.string().min(1),
+  challengeId: z.string().uuid(),
+  emails: z.array(z.string().email()).min(1).max(50),
+  autoDeliver: z.boolean().default(false),
+  note: z.string().optional(),
+});
+
+function dedupeEmails(emails: string[]) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of emails) {
+    const email = raw.trim().toLowerCase();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    out.push(email);
+  }
+  return out;
+}
+
+async function findUserIdByEmail(email: string): Promise<{ userId: string | null; error?: string }> {
+  try {
+    let page = 1;
+    // Paginate so we never silently miss a match once the user base grows
+    // past a single page of results.
+    for (let guard = 0; guard < 100; guard++) {
+      const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) return { userId: null, error: error.message };
+      const users = data?.users ?? [];
+      const match = users.find((u) => (u?.email ?? "").toLowerCase() === email);
+      if (match) return { userId: match.id };
+      const next = data?.nextPage ?? null;
+      if (typeof next !== "number" || next <= page || users.length === 0) return { userId: null };
+      page = next;
+    }
+    return { userId: null };
+  } catch (e) {
+    return { userId: null, error: e instanceof Error ? e.message : "User lookup failed" };
+  }
+}
+
+async function generateUniqueGiveawayReference(): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const ref = `GIVEAWAY-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const { data } = await supabaseAdmin
+      .from("orders")
+      .select("id")
+      .eq("paystack_reference", ref)
+      .maybeSingle();
+    if (!data) return ref;
+  }
+  throw new Error("Could not generate a unique giveaway reference");
+}
+
+export const grantGiveawayServer = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => GrantGiveawayInput.parse(input))
+  .handler(async ({ data }) => {
+    const emails = dedupeEmails(data.emails);
+    if (emails.length === 0) return { ok: false as const, error: "No valid email addresses provided" };
+    try {
+      const auth = await assertAdmin(data.accessToken);
+      if (!auth.ok) return auth;
+
+      const { data: challenge } = await supabaseAdmin
+        .from("challenges")
+        .select("id, name, account_size, currency")
+        .eq("id", data.challengeId)
+        .maybeSingle();
+      if (!challenge) return { ok: false as const, error: "Challenge not found" };
+
+      const currency = challenge.currency ?? "NGN";
+      const accountSize = Number(challenge.account_size ?? 0);
+
+      const results: Array<{ email: string; outcome: "delivered" | "pending" | "not_found" | "error"; message: string; reference?: string }> = [];
+
+      for (const email of emails) {
+        const { userId, error: lookupError } = await findUserIdByEmail(email);
+        if (lookupError) {
+          results.push({ email, outcome: "error", message: lookupError });
+          continue;
+        }
+        if (!userId) {
+          results.push({ email, outcome: "not_found", message: "No account found for this email" });
+          continue;
+        }
+
+        const reference = await generateUniqueGiveawayReference();
+
+        const { data: newOrder, error: orderError } = await supabaseAdmin
+          .from("orders")
+          .insert({
+            user_id: userId,
+            challenge_id: challenge.id,
+            currency,
+            original_amount: Math.round(accountSize * 100),
+            discount_amount: Math.round(accountSize * 100),
+            discount_code: "GIVEAWAY",
+            discount_percent: 100,
+            amount_paid: 0,
+            status: "paid",
+            paystack_reference: reference,
+          })
+          .select("id")
+          .single();
+
+        if (orderError || !newOrder) {
+          results.push({ email, outcome: "error", message: orderError?.message ?? "Failed to create the order" });
+          continue;
+        }
+
+        if (data.autoDeliver) {
+          let poolResult: Awaited<ReturnType<typeof claimPoolAccount>> | null = null;
+          try {
+            poolResult = await claimPoolAccount({
+              orderId: newOrder.id,
+              accountSizeNgn: currency === "USD" ? 0 : accountSize,
+              accountSizeUsd: currency === "USD" ? accountSize : undefined,
+              currency,
+              challengeId: challenge.id,
+              userId,
+              phase: 1,
+            });
+          } catch (e) {
+            console.error("[grantGiveawayServer] claimPoolAccount threw", e);
+            poolResult = null;
+          }
+          if (poolResult?.ok) {
+            results.push({ email, outcome: "delivered", message: `Delivered — MT5 ${poolResult.mt5Login}`, reference });
+          } else {
+            results.push({ email, outcome: "pending", message: poolResult?.error ?? "Pool unavailable — queued for manual delivery", reference });
+          }
+        } else {
+          results.push({ email, outcome: "pending", message: "Order created for manual delivery", reference });
+        }
+      }
+
+      // Audit trail for internal tracking of why/what was granted.
+      await supabaseAdmin.from("mt5_worker_events").insert({
+        worker_id: auth.userId,
+        event_type: "giveaway",
+        payload: {
+          note: data.note?.trim() ? data.note.trim() : null,
+          challenge_id: challenge.id,
+          challenge_name: challenge.name,
+          currency,
+          auto_deliver: data.autoDeliver,
+          emails,
+          outcomes: results.map((r) => ({ email: r.email, outcome: r.outcome, reference: r.reference })),
+        },
+      } as never);
+
+      return { ok: true as const, challengeName: challenge.name, results };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Giveaway failed";
+      console.error("[grantGiveawayServer] unexpected", msg);
+      return { ok: false as const, error: msg };
+    }
+  });

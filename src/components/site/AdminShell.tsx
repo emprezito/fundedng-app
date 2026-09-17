@@ -2,7 +2,7 @@ import { Link, Outlet, useRouterState, useLocation } from "@tanstack/react-route
 import {
   LayoutDashboard, Users2, Clock, Banknote, Trophy,
   Tag, LifeBuoy, Gift, Handshake, Database, ImageIcon,
-  LogOut, ArrowLeft, ShieldCheck, Download, Menu, X, Sparkles
+  LogOut, ArrowLeft, ShieldCheck, Download, Menu, X, Sparkles, Award
 } from "lucide-react";
 import { Brand } from "./Brand";
 import { NotificationBell } from "./NotificationBell";
@@ -18,6 +18,7 @@ const ADMIN_NAV = [
   { label: "Payouts",      to: "/admin/payouts",   icon: Banknote },
   { label: "Challenges",   to: "/admin/challenges",icon: Trophy },
   { label: "Discounts",    to: "/admin/discounts", icon: Tag },
+  { label: "Giveaways",    to: "/admin/giveaways", icon: Award },
   { label: "Tickets",      to: "/admin/tickets",   icon: LifeBuoy },
   { label: "Affiliate",    to: "/admin/affiliate", icon: Gift },
   { label: "Partners",     to: "/admin/partners",  icon: Handshake },
