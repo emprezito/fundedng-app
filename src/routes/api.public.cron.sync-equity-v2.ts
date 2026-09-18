@@ -21,9 +21,8 @@ async function refreshTradingDays(accountId: string) {
 
     if (!acct) return;
 
-    const phaseStart = acct.current_phase >= 2 && acct.phase1_passed_at
-      ? acct.phase1_passed_at
-      : acct.created_at;
+    const phaseStart =
+      acct.current_phase >= 2 && acct.phase1_passed_at ? acct.phase1_passed_at : acct.created_at;
 
     const isUSD = acct.currency === "USD";
     const startingBalance = Number(acct.starting_balance ?? 0);
@@ -72,38 +71,83 @@ async function refreshTradingDays(accountId: string) {
       .gte("created_at", oneDayAgo);
 
     if (recentTrades && recentTrades.length >= 3) {
-      const bySymbol = new Map<string, Array<{ open_time: string; close_time: string; ticket: number }>>();
+      const bySymbol = new Map<
+        string,
+        Array<{ open_time: string; close_time: string; ticket: number }>
+      >();
       for (const t of recentTrades) {
         if (!t.symbol || !t.open_time || !t.close_time) continue;
         if (!bySymbol.has(t.symbol)) bySymbol.set(t.symbol, []);
-        bySymbol.get(t.symbol)!.push({ open_time: t.open_time, close_time: t.close_time, ticket: t.ticket });
+        bySymbol
+          .get(t.symbol)!
+          .push({ open_time: t.open_time, close_time: t.close_time, ticket: t.ticket });
       }
       for (const [symbol, trades] of bySymbol) {
         if (trades.length < 3) continue;
-        trades.sort((a, b) => new Date(a.open_time).getTime() - new Date(b.open_time).getTime());
-        for (let i = 0; i < trades.length; i++) {
-          const current = trades[i];
-          const currentOpen = new Date(current.open_time).getTime();
-          const currentClose = new Date(current.close_time).getTime();
-          const concurrent: number[] = [current.ticket];
-          for (let j = i + 1; j < trades.length; j++) {
-            const other = trades[j];
-            const otherOpen = new Date(other.open_time).getTime();
-            if (otherOpen < currentClose) {
-              concurrent.push(other.ticket);
-            }
+
+        // Sweep-line max-overlap check. The previous algorithm only compared
+        // later trades against the FIRST trade's close time, so it never
+        // verified that those later trades also overlapped each other. A
+        // long-held trade containing two short, sequential, non-overlapping
+        // trades was wrongly counted as "3 simultaneous positions". True
+        // stacking requires the tickets to actually coexist in time, so each
+        // pair must be checked via real interval overlap.
+        type SweepEvent = { time: number; delta: 1 | -1; ticket: number };
+        const events: SweepEvent[] = [];
+        for (const t of trades) {
+          events.push({ time: new Date(t.open_time).getTime(), delta: 1, ticket: t.ticket });
+          events.push({ time: new Date(t.close_time).getTime(), delta: -1, ticket: t.ticket });
+        }
+        // Closes are processed before opens on exact-time ties, so a close and
+        // an open at the same instant never count as overlapping.
+        events.sort((a, b) => a.time - b.time || a.delta - b.delta);
+
+        const openTickets = new Set<number>();
+        let maxConcurrent: number[] = [];
+        for (const ev of events) {
+          if (ev.delta === -1) {
+            openTickets.delete(ev.ticket);
+          } else {
+            openTickets.add(ev.ticket);
+            if (openTickets.size > maxConcurrent.length) maxConcurrent = [...openTickets];
           }
-          if (concurrent.length >= 3) {
-            const breachReason = `Position stacking violation (server-side): ${concurrent.length} simultaneous positions detected on ${symbol} (tickets #${concurrent.join(", #")}). Maximum 2 open positions per symbol per account — instant breach.`;
-            await supabaseAdmin.from("trader_accounts").update({ status: "breached", breach_reason: breachReason, breached_at: new Date().toISOString() }).eq("id", accountId);
-            const { data: acctInfo } = await supabaseAdmin.from("trader_accounts").select("user_id, mt5_login").eq("id", accountId).single();
-            if (acctInfo) {
-              await supabaseAdmin.from("notifications").insert({ user_id: acctInfo.user_id, title: "⚠️ Account Breached — Position Violation", message: `You had ${concurrent.length} positions open on ${symbol} at the same time (max 2 per symbol). The account has been breached.`, type: "breach" });
-              try { await sendEventEmail({ type: "breached", accountId, reason: breachReason }); } catch {}
-              try { await supabaseAdmin.rpc("send_telegram" as never, { p_message: `🚫 <b>Position Violation Breach (Server-Side)</b>\nAccount: ${acctInfo.mt5_login ?? accountId}\nReason: ${breachReason}\n👉 <a href="https://app.fundedng.com/admin">Open Admin Panel</a>` } as never); } catch {}
-            }
-            return;
+        }
+
+        if (maxConcurrent.length >= 3) {
+          const breachReason = `Position stacking violation (server-side): ${maxConcurrent.length} simultaneous positions detected on ${symbol} (tickets #${maxConcurrent.join(", #")}). Maximum 2 open positions per symbol per account — instant breach.`;
+          await supabaseAdmin
+            .from("trader_accounts")
+            .update({
+              status: "breached",
+              breach_reason: breachReason,
+              breached_at: new Date().toISOString(),
+            })
+            .eq("id", accountId);
+          const { data: acctInfo } = await supabaseAdmin
+            .from("trader_accounts")
+            .select("user_id, mt5_login")
+            .eq("id", accountId)
+            .single();
+          if (acctInfo) {
+            await supabaseAdmin.from("notifications").insert({
+              user_id: acctInfo.user_id,
+              title: "⚠️ Account Breached — Position Violation",
+              message: `You had ${maxConcurrent.length} positions open on ${symbol} at the same time (max 2 per symbol). The account has been breached.`,
+              type: "breach",
+            });
+            try {
+              await sendEventEmail({ type: "breached", accountId, reason: breachReason });
+            } catch {}
+            try {
+              await supabaseAdmin.rpc(
+                "send_telegram" as never,
+                {
+                  p_message: `🚫 <b>Position Violation Breach (Server-Side)</b>\nAccount: ${acctInfo.mt5_login ?? accountId}\nReason: ${breachReason}\n👉 <a href="https://app.fundedng.com/admin">Open Admin Panel</a>`,
+                } as never,
+              );
+            } catch {}
           }
+          return;
         }
       }
     }
@@ -197,53 +241,60 @@ async function syncEquityV2(request: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { account_id, mt5_login, equity, balance, profit, scalping_violations, news_violations, weekend_violations, closed_deals, fetcher_only, open_positions, position_violations, restricted_symbol_violations } = body;
+  const {
+    account_id,
+    mt5_login,
+    equity,
+    balance,
+    profit,
+    scalping_violations,
+    news_violations,
+    weekend_violations,
+    closed_deals,
+    fetcher_only,
+    open_positions,
+    position_violations,
+    restricted_symbol_violations,
+  } = body;
 
   // Trades fetcher path — skip equity/drawdown/peak, only sync trade data
   if (fetcher_only === true) {
     if (closed_deals?.length) {
-      const { error: upsertErr } = await supabaseAdmin
-        .from("closed_trades")
-        .upsert(
-          closed_deals.map((d: any) => ({
-            account_id:       account_id,
-            ticket:           d.ticket,
-            symbol:           d.symbol,
-            open_time:        new Date(d.open_time * 1000).toISOString(),
-            close_time:       new Date(d.close_time * 1000).toISOString(),
-            duration_seconds: d.duration_seconds,
-            profit:           d.profit,
-            volume:           d.volume,
-            trade_type:       d.type ?? null,
-          })),
-          { onConflict: "account_id,ticket", ignoreDuplicates: true }
-        );
+      const { error: upsertErr } = await supabaseAdmin.from("closed_trades").upsert(
+        closed_deals.map((d: any) => ({
+          account_id: account_id,
+          ticket: d.ticket,
+          symbol: d.symbol,
+          open_time: new Date(d.open_time * 1000).toISOString(),
+          close_time: new Date(d.close_time * 1000).toISOString(),
+          duration_seconds: d.duration_seconds,
+          profit: d.profit,
+          volume: d.volume,
+          trade_type: d.type ?? null,
+        })),
+        { onConflict: "account_id,ticket", ignoreDuplicates: true },
+      );
       if (upsertErr) {
         console.error(`[sync-equity-v2] closed_trades upsert failed for ${account_id}:`, upsertErr);
       }
     }
 
     if (open_positions !== undefined) {
-      await supabaseAdmin
-        .from("open_positions")
-        .delete()
-        .eq("account_id", account_id);
+      await supabaseAdmin.from("open_positions").delete().eq("account_id", account_id);
 
       if (open_positions.length > 0) {
-        await supabaseAdmin
-          .from("open_positions")
-          .insert(
-            open_positions.map((p: any) => ({
-              account_id:  account_id,
-              ticket:      p.ticket,
-              symbol:      p.symbol,
-              open_time:   new Date(p.open_time * 1000).toISOString(),
-              volume:      p.volume,
-              profit:      p.profit,
-              price_open:  p.price_open,
-              type:        p.type,
-            }))
-          );
+        await supabaseAdmin.from("open_positions").insert(
+          open_positions.map((p: any) => ({
+            account_id: account_id,
+            ticket: p.ticket,
+            symbol: p.symbol,
+            open_time: new Date(p.open_time * 1000).toISOString(),
+            volume: p.volume,
+            profit: p.profit,
+            price_open: p.price_open,
+            type: p.type,
+          })),
+        );
       }
     }
 
@@ -255,7 +306,7 @@ async function syncEquityV2(request: Request) {
       await fetch(scalingUrl.toString(), {
         method: "POST",
         headers: {
-          "Content-Type":  "application/json",
+          "Content-Type": "application/json",
           "x-cron-secret": process.env.CRON_SECRET ?? "",
         },
         body: JSON.stringify({
@@ -273,7 +324,7 @@ async function syncEquityV2(request: Request) {
       await fetch(positionsUrl.toString(), {
         method: "POST",
         headers: {
-          "Content-Type":  "application/json",
+          "Content-Type": "application/json",
           "x-cron-secret": process.env.CRON_SECRET ?? "",
         },
         body: JSON.stringify({
@@ -338,9 +389,12 @@ async function syncEquityV2(request: Request) {
         }
 
         try {
-          await supabaseAdmin.rpc("send_telegram" as never, {
-            p_message: `🚫 <b>Scalping Breach — Safety Net</b>\nAccount: ${mt5_login ?? account_id}\nShort-held trades: ${shortCount}\n👉 <a href="https://app.fundedng.com/admin">Open Admin Panel</a>`,
-          } as never);
+          await supabaseAdmin.rpc(
+            "send_telegram" as never,
+            {
+              p_message: `🚫 <b>Scalping Breach — Safety Net</b>\nAccount: ${mt5_login ?? account_id}\nShort-held trades: ${shortCount}\n👉 <a href="https://app.fundedng.com/admin">Open Admin Panel</a>`,
+            } as never,
+          );
         } catch (e) {
           console.error("[sync-equity-v2] Telegram send failed:", e);
         }
@@ -359,13 +413,15 @@ async function syncEquityV2(request: Request) {
   ) {
     return Response.json(
       { error: "Missing required fields: account_id, mt5_login, equity, balance, profit" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const { data: account, error: acctErr } = await supabaseAdmin
     .from("trader_accounts")
-    .select("id, status, starting_balance, peak_equity, last_synced_at, trading_days, challenges(drawdown_type)")
+    .select(
+      "id, status, starting_balance, peak_equity, last_synced_at, trading_days, challenges(drawdown_type)",
+    )
     .eq("id", account_id)
     .in("status", ["active", "funded"])
     .eq("monitor_paused", false)
@@ -374,7 +430,7 @@ async function syncEquityV2(request: Request) {
   if (acctErr || !account) {
     return Response.json(
       { error: "Account not found or status not active/funded" },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
@@ -402,19 +458,15 @@ async function syncEquityV2(request: Request) {
   }
 
   const drawdownPercent =
-    metric < newPeak
-      ? Number((((newPeak - metric) / newPeak) * 100).toFixed(2))
-      : 0;
+    metric < newPeak ? Number((((newPeak - metric) / newPeak) * 100).toFixed(2)) : 0;
 
-  const { error: snapErr } = await supabaseAdmin
-    .from("account_snapshots")
-    .insert({
-      trader_account_id: account_id,
-      equity,
-      balance,
-      profit,
-      drawdown_percent: drawdownPercent,
-    });
+  const { error: snapErr } = await supabaseAdmin.from("account_snapshots").insert({
+    trader_account_id: account_id,
+    equity,
+    balance,
+    profit,
+    drawdown_percent: drawdownPercent,
+  });
 
   if (snapErr) {
     return Response.json({ error: snapErr.message }, { status: 500 });
@@ -447,9 +499,12 @@ async function syncEquityV2(request: Request) {
     }
 
     try {
-      await supabaseAdmin.rpc("send_telegram" as never, {
-        p_message: `🚫 <b>Drawdown Breach</b>\nAccount: ${mt5_login ?? account_id}\nReason: ${updatedAccount.breach_reason ?? "Maximum drawdown exceeded"}\n👉 <a href="https://app.fundedng.com/admin">Open Admin Panel</a>`,
-      } as never);
+      await supabaseAdmin.rpc(
+        "send_telegram" as never,
+        {
+          p_message: `🚫 <b>Drawdown Breach</b>\nAccount: ${mt5_login ?? account_id}\nReason: ${updatedAccount.breach_reason ?? "Maximum drawdown exceeded"}\n👉 <a href="https://app.fundedng.com/admin">Open Admin Panel</a>`,
+        } as never,
+      );
     } catch (e) {
       console.error("[sync-equity-v2] Telegram send failed:", e);
     }
@@ -529,7 +584,9 @@ async function syncEquityV2(request: Request) {
       });
       if (!resp.ok) {
         const body = await resp.text().catch(() => "");
-        console.error(`[sync-equity-v2] restricted-symbol handler returned ${resp.status}: ${body}`);
+        console.error(
+          `[sync-equity-v2] restricted-symbol handler returned ${resp.status}: ${body}`,
+        );
       }
     } catch (e) {
       console.error("[sync-equity-v2] restricted-symbol forward failed:", e);
@@ -538,22 +595,20 @@ async function syncEquityV2(request: Request) {
 
   // Upsert closed deals into closed_trades for stats & scalping detection
   if (closed_deals?.length) {
-    const { error: upsertErr } = await supabaseAdmin
-      .from("closed_trades")
-      .upsert(
-        closed_deals.map((d: any) => ({
-          account_id:       account_id,
-          ticket:           d.ticket,
-          symbol:           d.symbol,
-          open_time:        new Date(d.open_time * 1000).toISOString(),
-          close_time:       new Date(d.close_time * 1000).toISOString(),
-          duration_seconds: d.duration_seconds,
-          profit:           d.profit,
-          volume:           d.volume,
-          trade_type:       d.type ?? null,
-        })),
-        { onConflict: "account_id,ticket", ignoreDuplicates: true }
-      );
+    const { error: upsertErr } = await supabaseAdmin.from("closed_trades").upsert(
+      closed_deals.map((d: any) => ({
+        account_id: account_id,
+        ticket: d.ticket,
+        symbol: d.symbol,
+        open_time: new Date(d.open_time * 1000).toISOString(),
+        close_time: new Date(d.close_time * 1000).toISOString(),
+        duration_seconds: d.duration_seconds,
+        profit: d.profit,
+        volume: d.volume,
+        trade_type: d.type ?? null,
+      })),
+      { onConflict: "account_id,ticket", ignoreDuplicates: true },
+    );
     if (upsertErr) {
       console.error(`[sync-equity-v2] closed_trades upsert failed for ${account_id}:`, upsertErr);
     }
@@ -567,7 +622,7 @@ async function syncEquityV2(request: Request) {
       const resp = await fetch(scalingUrl.toString(), {
         method: "POST",
         headers: {
-          "Content-Type":  "application/json",
+          "Content-Type": "application/json",
           "x-cron-secret": process.env.CRON_SECRET ?? "",
         },
         body: JSON.stringify({
@@ -593,7 +648,7 @@ async function syncEquityV2(request: Request) {
       const resp = await fetch(positionsUrl.toString(), {
         method: "POST",
         headers: {
-          "Content-Type":  "application/json",
+          "Content-Type": "application/json",
           "x-cron-secret": process.env.CRON_SECRET ?? "",
         },
         body: JSON.stringify({
@@ -665,9 +720,12 @@ async function syncEquityV2(request: Request) {
       }
 
       try {
-        await supabaseAdmin.rpc("send_telegram" as never, {
-          p_message: `🚫 <b>Scalping Breach — Safety Net</b>\nAccount: ${mt5_login ?? account_id}\nShort-held trades: ${shortCount}\n👉 <a href="https://app.fundedng.com/admin">Open Admin Panel</a>`,
-        } as never);
+        await supabaseAdmin.rpc(
+          "send_telegram" as never,
+          {
+            p_message: `🚫 <b>Scalping Breach — Safety Net</b>\nAccount: ${mt5_login ?? account_id}\nShort-held trades: ${shortCount}\n👉 <a href="https://app.fundedng.com/admin">Open Admin Panel</a>`,
+          } as never,
+        );
       } catch (e) {
         console.error("[sync-equity-v2] Telegram send failed:", e);
       }
