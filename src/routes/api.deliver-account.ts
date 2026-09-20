@@ -29,8 +29,7 @@ export const Route = createFileRoute("/api/deliver-account")({
           if (!token) {
             return Response.json({ error: "Unauthorized" }, { status: 401 });
           }
-          const { data: userData, error: authErr } =
-            await supabaseAdmin.auth.getUser(token);
+          const { data: userData, error: authErr } = await supabaseAdmin.auth.getUser(token);
           if (authErr || !userData?.user) {
             return Response.json({ error: "Unauthorized" }, { status: 401 });
           }
@@ -42,10 +41,7 @@ export const Route = createFileRoute("/api/deliver-account")({
             return Response.json({ error: roleErr.message }, { status: 500 });
           }
           if (!roles?.some((r) => r.role === "admin")) {
-            return Response.json(
-              { error: "Forbidden — admins only" },
-              { status: 403 },
-            );
+            return Response.json({ error: "Forbidden — admins only" }, { status: 403 });
           }
 
           const body = (await request.json()) as {
@@ -55,13 +51,7 @@ export const Route = createFileRoute("/api/deliver-account")({
             mt5_server?: string;
             investor_password?: string;
           };
-          const {
-            order_id,
-            mt5_login,
-            mt5_password,
-            mt5_server,
-            investor_password,
-          } = body;
+          const { order_id, mt5_login, mt5_password, mt5_server, investor_password } = body;
           if (!order_id) {
             return Response.json({ error: "order_id required" }, { status: 400 });
           }
@@ -105,18 +95,49 @@ export const Route = createFileRoute("/api/deliver-account")({
           // A reset (order.reset_account_id) delivers the SAME phase/tier the
           // trader was on when they breached (Phase 2 resets -> Phase 2 account,
           // Funded resets -> Funded account at the same tier).
+          // Hard guards close the manual-delivery hole: computeBreachReset already
+          // blocks repeats/funded-2/flash at purchase time, but a queued order can
+          // sit in Pending and be delivered later. Re-verify here so a breached
+          // account can never be reset twice, and Flash/Funded-2 can never slip
+          // through a stale pending order.
           let resetPhase = 1;
           let resetTier: number | null = null;
           if (order.reset_account_id) {
             const { data: resetAcct } = await supabaseAdmin
               .from("trader_accounts")
-              .select("current_phase, funded_tier")
+              .select("current_phase, funded_tier, reset_used, status")
               .eq("id", order.reset_account_id)
               .maybeSingle();
-            if (resetAcct) {
-              resetPhase = Math.max(1, Number(resetAcct.current_phase ?? 1));
-              resetTier = resetPhase >= 3 ? Number(resetAcct.funded_tier ?? 1) : null;
+            if (!resetAcct) {
+              return Response.json({ error: "Reset source account not found" }, { status: 400 });
             }
+            if (resetAcct.reset_used) {
+              return Response.json(
+                { error: "This account has already been reset once." },
+                { status: 400 },
+              );
+            }
+            if (resetAcct.status !== "breached") {
+              return Response.json(
+                { error: "This account is no longer breached — reset cannot be delivered." },
+                { status: 400 },
+              );
+            }
+            const resetPhaseNum = Math.max(1, Number(resetAcct.current_phase ?? 1));
+            if (resetPhaseNum >= 3 && Number(resetAcct.funded_tier ?? 1) === 2) {
+              return Response.json(
+                { error: "Funded 2 accounts cannot be reset." },
+                { status: 400 },
+              );
+            }
+            if ((ch as unknown as { category?: string | null } | null)?.category === "flash") {
+              return Response.json(
+                { error: "Flash challenge accounts are not eligible for reset." },
+                { status: 400 },
+              );
+            }
+            resetPhase = resetPhaseNum;
+            resetTier = resetPhase >= 3 ? Number(resetAcct.funded_tier ?? 1) : null;
           }
 
           // Persist admin-entered credentials on trader_accounts.
@@ -145,10 +166,7 @@ export const Route = createFileRoute("/api/deliver-account")({
             return Response.json({ error: insertErr.message }, { status: 500 });
           }
 
-          await supabaseAdmin
-            .from("orders")
-            .update({ status: "delivered" })
-            .eq("id", order.id);
+          await supabaseAdmin.from("orders").update({ status: "delivered" }).eq("id", order.id);
 
           // Reset delivery: close the old breached account + mark reset_used.
           if (order.reset_account_id) {
@@ -174,23 +192,27 @@ export const Route = createFileRoute("/api/deliver-account")({
             payload: { order_id: order.id, login: mt5_login },
           });
 
-           await supabaseAdmin.from("notifications").insert({
-             user_id: order.user_id,
-             title: "🎉 Your MT5 Account is Ready",
-             message: `${ch.name} active. Login: ${mt5_login} · Server: ${mt5_server}. Open the dashboard to view your password.`,
-             type: "welcome",
-           });
+          await supabaseAdmin.from("notifications").insert({
+            user_id: order.user_id,
+            title: "🎉 Your MT5 Account is Ready",
+            message: `${ch.name} active. Login: ${mt5_login} · Server: ${mt5_server}. Open the dashboard to view your password.`,
+            type: "welcome",
+          });
 
-           await sendPushToUser(order.user_id, {
-             title: "🎉 Your MT5 Account is Ready",
-             body: `${ch.name} active. Tap to view your login.`,
-             url: "/dashboard",
-           });
+          await sendPushToUser(order.user_id, {
+            title: "🎉 Your MT5 Account is Ready",
+            body: `${ch.name} active. Tap to view your login.`,
+            url: "/dashboard",
+          });
 
-           // Send account delivered email
-           await sendEventEmail({ type: "mt5_delivered", orderId: order.id, mt5Login: mt5_login, mt5Password: mt5_password, mt5Server: mt5_server }).catch((e) =>
-             console.error("[deliver-account] email send failed", e),
-           );
+          // Send account delivered email
+          await sendEventEmail({
+            type: "mt5_delivered",
+            orderId: order.id,
+            mt5Login: mt5_login,
+            mt5Password: mt5_password,
+            mt5Server: mt5_server,
+          }).catch((e) => console.error("[deliver-account] email send failed", e));
 
           return Response.json({ ok: true, login: mt5_login, server: mt5_server });
         } catch (e) {

@@ -46,10 +46,12 @@ const RESET_ELIGIBLE_FROM = new Date("2026-09-01T00:00:00.000Z").getTime();
 export async function computeBreachReset(accountId: string) {
   const { data: account, error } = await supabaseAdmin
     .from("trader_accounts")
-    .select(`
+    .select(
+      `
       id, user_id, mt5_login, currency, starting_balance, current_phase,
       funded_tier, challenge_id, status, reset_used, created_at
-    `)
+    `,
+    )
     .eq("id", accountId)
     .maybeSingle();
 
@@ -63,11 +65,11 @@ export async function computeBreachReset(accountId: string) {
   // calculation and before the Funded-2 exclusion below. The Flash exclusion
   // is a HARD exclusion and must be checked early enough that no existing or
   // future reset-campaign flag can bypass it.
-  const { data: challenge } = await supabaseAdmin
+  const { data: challenge } = (await supabaseAdmin
     .from("challenges")
     .select("category")
     .eq("id", account.challenge_id)
-    .maybeSingle() as unknown as { data: { category?: string | null } | null };
+    .maybeSingle()) as unknown as { data: { category?: string | null } | null };
 
   // Unconditional check: one reset per account — no exceptions.
   if (account.reset_used) {
@@ -78,7 +80,28 @@ export async function computeBreachReset(accountId: string) {
   if (!createdAt || Number.isNaN(createdAt) || createdAt < RESET_ELIGIBLE_FROM) {
     return {
       ok: false as const,
-      error: "This account is not yet eligible for a reset. Resets are available for accounts provisioned on or after 1 Sep 2026. Please contact support if you believe this is a mistake.",
+      error:
+        "This account is not yet eligible for a reset. Resets are available for accounts provisioned on or after 1 Sep 2026. Please contact support if you believe this is a mistake.",
+    };
+  }
+
+  // Unconditional check: one reset per USER, across ALL of their accounts —
+  // no exceptions. Once ANY account the user owns has consumed the reset
+  // (reset_used = true), no other account they hold can ever be reset again.
+  // This closes the chain-reset path (breach A -> reset -> B -> breach B ->
+  // reset again) where each freshly provisioned reset account arrives with
+  // reset_used = false.
+  const { data: anyResetUsed } = await supabaseAdmin
+    .from("trader_accounts")
+    .select("id")
+    .eq("user_id", account.user_id)
+    .eq("reset_used", true)
+    .limit(1);
+  if (anyResetUsed && anyResetUsed.length > 0) {
+    return {
+      ok: false as const,
+      error:
+        "You have already used your one-time account reset. Resets are limited to once per user, across all accounts.",
     };
   }
 
@@ -106,9 +129,16 @@ export async function computeBreachReset(accountId: string) {
     .select("price_naira, usd_price")
     .eq("id", account.challenge_id)
     .maybeSingle();
-  const base = isUsd ? Number(challengePricing?.usd_price ?? 0) : Number(challengePricing?.price_naira ?? 0);
+  const base = isUsd
+    ? Number(challengePricing?.usd_price ?? 0)
+    : Number(challengePricing?.price_naira ?? 0);
   const kind: ResetKind = phase <= 1 ? "phase1" : phase === 2 ? "phase2" : "funded";
-  const percent = kind === "phase1" ? RESET_PHASE1_PERCENT : kind === "phase2" ? RESET_PHASE2_PERCENT : RESET_FUNDED_PERCENT;
+  const percent =
+    kind === "phase1"
+      ? RESET_PHASE1_PERCENT
+      : kind === "phase2"
+        ? RESET_PHASE2_PERCENT
+        : RESET_FUNDED_PERCENT;
   const feeInCurrency = Math.round(base * percent * 100) / 100;
 
   return {
@@ -167,7 +197,10 @@ export async function provisionBreachReset(args: {
       .from("trader_accounts")
       .update({ status: "breached", reset_used: false } as never)
       .eq("id", account.id);
-    return { ok: false, error: "Pool empty — no account available for reset. Admin has been notified." };
+    return {
+      ok: false,
+      error: "Pool empty — no account available for reset. Admin has been notified.",
+    };
   }
 
   // 3. Set phase + funded status/tier on the new account (funded branch only).
@@ -186,7 +219,12 @@ export async function provisionBreachReset(args: {
     .eq("id", poolResult.accountId);
 
   // 4. Notify the trader.
-  const label = quote.kind === "funded" ? `Funded ${quote.fundedTier}` : quote.kind === "phase2" ? "Phase 2" : "Phase 1";
+  const label =
+    quote.kind === "funded"
+      ? `Funded ${quote.fundedTier}`
+      : quote.kind === "phase2"
+        ? "Phase 2"
+        : "Phase 1";
   await supabaseAdmin.from("notifications").insert({
     user_id: args.userId,
     title: "🔄 Account Reset Complete",
