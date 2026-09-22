@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendEventEmail } from "@/lib/email.server";
 import { claimPoolAccount } from "@/lib/account-pool.server";
 import { sendTelegramWithButtons } from "@/lib/telegram.server";
-import { sendDiscordNotification } from "@/lib/discord.server";
+import { sendDiscordNotification, sendDiscordImage } from "@/lib/discord.server";
 import { sendPushToUser } from "@/lib/push.server";
 import { computeBreachReset, provisionBreachReset } from "@/lib/breach-reset.server";
 
@@ -1455,6 +1455,37 @@ export const sendPhaseRequestNotificationServer = createServerFn({ method: "POST
       return { ok: true as const };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed";
+      return { ok: false as const, error: msg };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Send certificate PNG to the Discord certificates channel. The client renders
+// the certificate via html-to-image, sends the base64 PNG here, and this
+// forwards it as a file attachment — the certificates webhook URL never leaves
+// the server.
+// ---------------------------------------------------------------------------
+const SendCertificateImageInput = z.object({
+  accessToken: z.string().min(1),
+  imageBase64: z.string().min(1), // data URL or raw base64, strip prefix if present
+  filename: z.string().min(1),
+  caption: z.string().optional(),
+});
+
+export const sendCertificateImageServer = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => SendCertificateImageInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const auth = await assertAdmin(data.accessToken);
+      if (!auth.ok) return auth;
+
+      const base64 = data.imageBase64.replace(/^data:image\/png;base64,/, "");
+      const buffer = Buffer.from(base64, "base64");
+      await sendDiscordImage(buffer, data.filename, data.caption);
+      return { ok: true as const };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Send failed";
+      console.error("[sendCertificateImageServer] unexpected", msg);
       return { ok: false as const, error: msg };
     }
   });
