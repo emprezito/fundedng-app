@@ -11,10 +11,31 @@ export const Route = createFileRoute("/api/public/cron/reconcile-payments")({
   },
 });
 
+const RECONCILE_ALERT_THROTTLE_MS = 60 * 60 * 1000; // at most one "manual delivery needed" alert per order per hour
+
+/**
+ * True if a reconcile alert was already sent for this order within the throttle
+ * window. Uses mt5_worker_events as the dedup ledger so the job can keep
+ * retrying delivery every run without spamming Telegram while the pool is empty.
+ */
+async function reconcileAlertThrottled(orderId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from("mt5_worker_events")
+    .select("payload")
+    .eq("event_type", "reconcile_alert")
+    .eq("worker_id", "reconcile")
+    .gte("created_at", new Date(Date.now() - RECONCILE_ALERT_THROTTLE_MS).toISOString())
+    .limit(200);
+  return (data ?? []).some((e) => {
+    const payload = (e as unknown as { payload?: { order_id?: string } } | null)?.payload;
+    return payload?.order_id === orderId;
+  });
+}
+
 async function attemptDelivery(orderId: string, userId: string, challengeId: string) {
   const { data: challenge } = await supabaseAdmin
     .from("challenges")
-    .select("id, name, account_size")
+    .select("id, name, account_size, currency")
     .eq("id", challengeId)
     .maybeSingle();
 
@@ -27,6 +48,7 @@ async function attemptDelivery(orderId: string, userId: string, challengeId: str
     challengeId: challenge.id,
     userId,
     phase: 1,
+    notifyOnEmpty: false,
   }).catch(() => null);
 
   const { data: prof } = await supabaseAdmin
@@ -45,41 +67,96 @@ async function attemptDelivery(orderId: string, userId: string, challengeId: str
       mt5Server: poolResult.mt5Server,
     }).catch(() => {});
 
-    await supabaseAdmin.rpc("send_telegram" as never, {
-      p_message: `✅ <b>Reconciliation Delivery</b>\nTrader: ${traderName}\nChallenge: ${challenge.name}\nLogin: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}`,
-    } as never).catch(() => {});
-  } else {
-    await supabaseAdmin.rpc("send_telegram" as never, {
-      p_message: `⏳ <b>Reconciliation — Manual Delivery Needed</b>\nTrader: ${traderName}\nChallenge: ${challenge.name}\nOrder: ${orderId}\nReason: ${poolResult?.error ?? "Pool unavailable"}`,
-    } as never).catch(() => {});
+    await supabaseAdmin
+      .rpc(
+        "send_telegram" as never,
+        {
+          p_message: `✅ <b>Reconciliation Delivery</b>\nTrader: ${traderName}\nChallenge: ${challenge.name}\nLogin: ${poolResult.mt5Login}\nServer: ${poolResult.mt5Server}`,
+        } as never,
+      )
+      .catch(() => {});
+  } else if (!(await reconcileAlertThrottled(orderId))) {
+    await supabaseAdmin
+      .rpc(
+        "send_telegram" as never,
+        {
+          p_message: `⏳ <b>Reconciliation — Manual Delivery Needed</b>\nTrader: ${traderName}\nChallenge: ${challenge.name}\nOrder: ${orderId}\nReason: ${poolResult?.error ?? "Pool unavailable"}`,
+        } as never,
+      )
+      .catch(() => {});
+
+    await supabaseAdmin
+      .from("mt5_worker_events")
+      .insert({
+        event_type: "reconcile_alert",
+        worker_id: "reconcile",
+        payload: { order_id: orderId, reason: poolResult?.error ?? "Pool unavailable" },
+      } as never)
+      .then(({ error }) => {
+        if (error) console.warn("[reconcile-payments] alert ledger insert failed:", error.message);
+      });
   }
+}
+
+const SQUAD_LOOKBACK_MS = 24 * 60 * 60 * 1000; // re-scan the last 24h — safe because orders are deduped by paystack_reference
+const SQUAD_PAGE_SIZE = 50;
+const SQUAD_MAX_PAGES = 20;
+
+interface SquadTransaction {
+  transaction_ref?: string;
+  transaction_status?: string;
+  transaction_amount?: number;
+  email?: string;
+  meta?: Record<string, string>;
+  metadata?: Record<string, string>;
 }
 
 async function pollSquadTransactions(squadSecret: string) {
   const now = new Date();
-  const from = new Date(now.getTime() - 60 * 60 * 1000); // last hour
+  const from = new Date(now.getTime() - SQUAD_LOOKBACK_MS);
 
-  const queryUrl = new URL("https://api-d.squadco.com/transaction/query");
-  queryUrl.searchParams.set("page", "1");
-  queryUrl.searchParams.set("perPage", "50");
-  queryUrl.searchParams.set("from", from.toISOString());
-  queryUrl.searchParams.set("to", now.toISOString());
+  // Fetch every page in the window; stop when a page comes back short.
+  const transactions: SquadTransaction[] = [];
+  for (let page = 1; page <= SQUAD_MAX_PAGES; page++) {
+    const queryUrl = new URL("https://api-d.squadco.com/transaction/query");
+    queryUrl.searchParams.set("page", String(page));
+    queryUrl.searchParams.set("perPage", String(SQUAD_PAGE_SIZE));
+    queryUrl.searchParams.set("from", from.toISOString());
+    queryUrl.searchParams.set("to", now.toISOString());
 
-  const res = await fetch(queryUrl.toString(), {
-    headers: { Authorization: `Bearer ${squadSecret}` },
-  });
+    const res = await fetch(queryUrl.toString(), {
+      headers: { Authorization: `Bearer ${squadSecret}` },
+    });
 
-  if (!res.ok) {
-    console.error("[reconcile-payments] Squad query failed:", res.status);
-    return [];
+    if (!res.ok) {
+      console.error("[reconcile-payments] Squad query failed:", res.status);
+      break;
+    }
+
+    const json = await res.json().catch(() => ({}));
+    const pageTransactions: SquadTransaction[] = Array.isArray(json?.data)
+      ? (json.data as SquadTransaction[])
+      : Array.isArray(json?.records)
+        ? (json.records as SquadTransaction[])
+        : [];
+    transactions.push(...pageTransactions);
+    if (pageTransactions.length < SQUAD_PAGE_SIZE) break;
   }
 
-  const json = await res.json().catch(() => ({}));
-  const transactions = Array.isArray(json?.data) ? json.data : Array.isArray(json?.records) ? json.records : [];
+  if (transactions.length === 0) return [];
+
+  // Dedupe by transaction_ref — a transaction can appear on more than one page.
+  const seen = new Set<string>();
+  const unique = transactions.filter((tx) => {
+    const ref = tx?.transaction_ref;
+    if (!ref || seen.has(ref)) return false;
+    seen.add(ref);
+    return true;
+  });
 
   const created: Array<{ reference: string; orderId: string }> = [];
 
-  for (const tx of transactions) {
+  for (const tx of unique) {
     const reference = tx.transaction_ref;
     const txStatus = (tx.transaction_status ?? "").toLowerCase();
     if (!reference || txStatus !== "success") continue;
@@ -108,14 +185,23 @@ async function pollSquadTransactions(squadSecret: string) {
         challengeId = challengeId || vData.meta.challenge_id;
       }
       if (!userId) userId = vData?.meta?.user_id ?? tx.meta?.user_id ?? tx.metadata?.user_id;
-      if (!challengeId) challengeId = vData?.meta?.challenge_id ?? tx.meta?.challenge_id ?? tx.metadata?.challenge_id;
+      if (!challengeId)
+        challengeId =
+          vData?.meta?.challenge_id ?? tx.meta?.challenge_id ?? tx.metadata?.challenge_id;
     }
 
     if (!userId || !challengeId) {
-      console.warn(`[reconcile-payments] Cannot resolve user/challenge for ${reference} — notifying admin`);
-      await supabaseAdmin.rpc("send_telegram" as never, {
-        p_message: `⚠️ <b>Unresolved Squad Payment</b>\nRef: ${reference}\nAmount: ${(tx.transaction_amount ?? 0) / 100} NGN\nEmail: ${tx.email ?? "N/A"}\nNo metadata — manual check needed.`,
-      } as never).catch(() => {});
+      console.warn(
+        `[reconcile-payments] Cannot resolve user/challenge for ${reference} — notifying admin`,
+      );
+      await supabaseAdmin
+        .rpc(
+          "send_telegram" as never,
+          {
+            p_message: `⚠️ <b>Unresolved Squad Payment</b>\nRef: ${reference}\nAmount: ${(tx.transaction_amount ?? 0) / 100} NGN\nEmail: ${tx.email ?? "N/A"}\nNo metadata — manual check needed.`,
+          } as never,
+        )
+        .catch(() => {});
       continue;
     }
 
@@ -148,13 +234,21 @@ async function pollSquadTransactions(squadSecret: string) {
       .single();
 
     if (orderErr || !order) {
-      console.error(`[reconcile-payments] Order creation failed for ${reference}:`, orderErr?.message);
+      console.error(
+        `[reconcile-payments] Order creation failed for ${reference}:`,
+        orderErr?.message,
+      );
       continue;
     }
 
-    await supabaseAdmin.rpc("send_telegram" as never, {
-      p_message: `🔄 <b>Squad Reconciled — Missing Order Created</b>\nRef: ${reference}\nAmount: ${(amountPaid / 100).toLocaleString("en-NG")} NGN\nChallenge: ${challenge.name}`,
-    } as never).catch(() => {});
+    await supabaseAdmin
+      .rpc(
+        "send_telegram" as never,
+        {
+          p_message: `🔄 <b>Squad Reconciled — Missing Order Created</b>\nRef: ${reference}\nAmount: ${(amountPaid / 100).toLocaleString("en-NG")} NGN\nChallenge: ${challenge.name}`,
+        } as never,
+      )
+      .catch(() => {});
 
     await attemptDelivery(order.id, userId, challengeId);
     created.push({ reference, orderId: order.id });
@@ -206,9 +300,7 @@ async function reconcilePayments(request: Request) {
     .select("order_id")
     .in("order_id", orderIds);
 
-  const deliveredOrderIds = new Set(
-    (deliveredAccounts ?? []).map((a) => a.order_id)
-  );
+  const deliveredOrderIds = new Set((deliveredAccounts ?? []).map((a) => a.order_id));
 
   const undelivered = paidOrders.filter((o) => !deliveredOrderIds.has(o.id));
 

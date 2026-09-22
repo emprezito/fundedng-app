@@ -61,7 +61,11 @@ export async function claimPoolAccount(args: {
   phase?: number;
   fundedTier?: number;
   phaseProgression?: boolean;
-}): Promise<{ ok: true; accountId: string; mt5Login: string; mt5Password: string; mt5Server: string } | { ok: false; error: string }> {
+  notifyOnEmpty?: boolean;
+}): Promise<
+  | { ok: true; accountId: string; mt5Login: string; mt5Password: string; mt5Server: string }
+  | { ok: false; error: string }
+> {
   let lastError = "No accounts available for this size. Admin has been notified.";
   const isUsd = args.currency === "USD";
   const accountSize = isUsd ? args.accountSizeUsd! : args.accountSizeNgn;
@@ -126,8 +130,10 @@ export async function claimPoolAccount(args: {
       return { ok: false, error: "Pool lookup failed." };
     }
     if (!poolRow) {
-      if (attempt === 1) {
-        const sizeLabel = isUsd ? `$${accountSize.toLocaleString("en-US")}` : `₦${accountSize.toLocaleString("en-NG")}`;
+      if (attempt === 1 && (args.notifyOnEmpty ?? true)) {
+        const sizeLabel = isUsd
+          ? `$${accountSize.toLocaleString("en-US")}`
+          : `₦${accountSize.toLocaleString("en-NG")}`;
         const phaseLabel = phase === 1 ? "Phase 1" : phase === 2 ? "Phase 2" : "Funded";
         const msg = `No ${sizeLabel} ${args.currency} ${phaseLabel} account in pool for order ${(args.orderId ?? "n/a").slice(0, 8)}…`;
         await notifyAdmins("⚠️ Account Pool Empty", msg);
@@ -158,7 +164,12 @@ export async function claimPoolAccount(args: {
 
     if (!updated || updated.length === 0) {
       // Race lost — another request claimed this account first. Retry with next.
-      console.warn("[claimPoolAccount] attempt %d/%d: race lost on %s, retrying…", attempt, MAX_CLAIM_RETRIES, poolRow.id);
+      console.warn(
+        "[claimPoolAccount] attempt %d/%d: race lost on %s, retrying…",
+        attempt,
+        MAX_CLAIM_RETRIES,
+        poolRow.id,
+      );
       lastError = "Could not claim account due to high demand. Admin has been notified.";
       continue;
     }
@@ -208,40 +219,39 @@ export async function claimPoolAccount(args: {
 
     // 5. Mark order delivered (skip for phase progression — order already delivered)
     if (!args.phaseProgression && args.orderId) {
-      await supabaseAdmin
-        .from("orders")
-        .update({ status: "delivered" })
-        .eq("id", args.orderId);
+      await supabaseAdmin.from("orders").update({ status: "delivered" }).eq("id", args.orderId);
 
       // 6. Mark account_request as fulfilled (so it doesn't show in admin pending tab)
       // Uses upsert to avoid race with tg_orders_queue_request trigger
       await supabaseAdmin
         .from("account_requests")
-        .upsert({
-          order_id: args.orderId,
-          user_id: args.userId,
-          challenge_id: args.challengeId,
-          status: "fulfilled",
-          fulfilled_at: new Date().toISOString(),
-          claimed_by: "pool",
-          provider_response: { login: poolRow.mt5_login, server: poolRow.mt5_server },
-        }, {
-          onConflict: "order_id",
-          ignoreDuplicates: false,
-        })
+        .upsert(
+          {
+            order_id: args.orderId,
+            user_id: args.userId,
+            challenge_id: args.challengeId,
+            status: "fulfilled",
+            fulfilled_at: new Date().toISOString(),
+            claimed_by: "pool",
+            provider_response: { login: poolRow.mt5_login, server: poolRow.mt5_server },
+          },
+          {
+            onConflict: "order_id",
+            ignoreDuplicates: false,
+          },
+        )
         .then(({ error }) => {
-          if (error) console.warn("[claimPoolAccount] account_requests upsert failed:", error.message);
+          if (error)
+            console.warn("[claimPoolAccount] account_requests upsert failed:", error.message);
         });
 
       // 7. Send welcome notification to trader
-      await supabaseAdmin
-        .from("notifications")
-        .insert({
-          user_id: args.userId,
-          title: "🎉 Your MT5 Account is Ready",
-          message: `Your challenge account is active. Login: ${poolRow.mt5_login} · Server: ${poolRow.mt5_server}. Check your dashboard for the password.`,
-          type: "welcome",
-        });
+      await supabaseAdmin.from("notifications").insert({
+        user_id: args.userId,
+        title: "🎉 Your MT5 Account is Ready",
+        message: `Your challenge account is active. Login: ${poolRow.mt5_login} · Server: ${poolRow.mt5_server}. Check your dashboard for the password.`,
+        type: "welcome",
+      });
     }
 
     // 5b. Check if stock is low for this size and phase
@@ -254,7 +264,9 @@ export async function claimPoolAccount(args: {
       .eq("phase", phase);
 
     if (remaining !== null && remaining <= 2) {
-      const sizeLabel = isUsd ? `$${accountSize.toLocaleString("en-US")}` : `₦${accountSize.toLocaleString("en-NG")}`;
+      const sizeLabel = isUsd
+        ? `$${accountSize.toLocaleString("en-US")}`
+        : `₦${accountSize.toLocaleString("en-NG")}`;
       const phaseLabel = phase === 1 ? "Phase 1" : phase === 2 ? "Phase 2" : "Funded";
       const lowMsg = `Only ${remaining} ${phaseLabel} account(s) left for size ${sizeLabel}.`;
       await notifyAdmins("⚠️ Account Pool Running Low", lowMsg);
@@ -274,6 +286,9 @@ export async function claimPoolAccount(args: {
   }
 
   // All retries exhausted — admins need to intervene
-  await notifyAdmins("⚠️ Account Pool Contention", `Exhausted retries claiming pool account for order ${(args.orderId ?? "n/a").slice(0, 8)}…`);
+  await notifyAdmins(
+    "⚠️ Account Pool Contention",
+    `Exhausted retries claiming pool account for order ${(args.orderId ?? "n/a").slice(0, 8)}…`,
+  );
   return { ok: false, error: lastError };
 }

@@ -16,6 +16,7 @@ import {
   approveFundedServer,
   provisionPayoutServer,
   provisionNextTierServer,
+  deliverPartnerFreeServer,
 } from "@/server/admin.functions";
 import { notifyEmail } from "@/lib/notify-email";
 
@@ -520,27 +521,23 @@ function useAdminDataHook() {
     const text = replyText.trim();
     if (!text) return toast.error("Type a reply first");
     setReplySaving(true);
-    const { error } = await supabase
-      .from("ticket_messages")
-      .insert({
-        ticket_id: selectedTicket.id,
-        sender_id: session.user.id,
-        sender_role: "admin",
-        message: text,
-      });
+    const { error } = await supabase.from("ticket_messages").insert({
+      ticket_id: selectedTicket.id,
+      sender_id: session.user.id,
+      sender_role: "admin",
+      message: text,
+    });
     setReplySaving(false);
     if (error) return toast.error(error.message);
     await supabase.rpc("send_telegram", {
       p_message: `<b>Support Ticket Updated</b>\nTrader: ${selectedTicket.profiles?.full_name ?? "—"}\nSubject: ${selectedTicket.subject}\nAdmin replied to ticket.`,
     });
-    await supabase
-      .from("notifications")
-      .insert({
-        user_id: selectedTicket.user_id,
-        title: "Support Ticket Update",
-        message: `Admin replied to your ticket "${selectedTicket.subject}".`,
-        type: "info",
-      });
+    await supabase.from("notifications").insert({
+      user_id: selectedTicket.user_id,
+      title: "Support Ticket Update",
+      message: `Admin replied to your ticket "${selectedTicket.subject}".`,
+      type: "info",
+    });
     toast.success("Reply sent");
     setReplyText("");
     await loadTicketMessages(selectedTicket.id);
@@ -558,14 +555,12 @@ function useAdminDataHook() {
     await supabase.rpc("send_telegram", {
       p_message: `<b>Support Ticket ${newStatus.replace("_", " ").toUpperCase()}</b>\nTrader: ${t.profiles?.full_name ?? "—"}\nSubject: ${t.subject}\nStatus changed to ${newStatus.replace("_", " ")}.`,
     });
-    await supabase
-      .from("notifications")
-      .insert({
-        user_id: t.user_id,
-        title: "Support Ticket Updated",
-        message: `Your ticket "${t.subject}" status changed to ${newStatus.replace("_", " ")}.`,
-        type: "info",
-      });
+    await supabase.from("notifications").insert({
+      user_id: t.user_id,
+      title: "Support Ticket Updated",
+      message: `Your ticket "${t.subject}" status changed to ${newStatus.replace("_", " ")}.`,
+      type: "info",
+    });
     toast.success(`Status changed to ${newStatus.replace("_", " ")}`);
     if (selectedTicket?.id === t.id)
       setSelectedTicket((prev: any) => (prev ? { ...prev, status: newStatus } : null));
@@ -706,16 +701,14 @@ function useAdminDataHook() {
       } as never)
       .eq("id", account.id);
     if (error) return toast.error(error.message);
-    await supabase
-      .from("account_snapshots")
-      .insert({
-        trader_account_id: account.id,
-        equity: account.starting_balance,
-        balance: account.starting_balance,
-        profit: 0,
-        drawdown_percent: 0,
-        snapshot_time: new Date().toISOString(),
-      } as never);
+    await supabase.from("account_snapshots").insert({
+      trader_account_id: account.id,
+      equity: account.starting_balance,
+      balance: account.starting_balance,
+      profit: 0,
+      drawdown_percent: 0,
+      snapshot_time: new Date().toISOString(),
+    } as never);
     toast.success("Account balance reset");
     load();
   };
@@ -802,15 +795,13 @@ function useAdminDataHook() {
     const peak = Math.max(starting, Number(account.peak_equity ?? starting), equity);
     const profit = equity - starting;
     const drawdown = peak > 0 ? Math.max(0, ((peak - equity) / peak) * 100) : 0;
-    const { error } = await supabase
-      .from("account_snapshots")
-      .insert({
-        trader_account_id: account.id,
-        equity,
-        balance: equity,
-        profit,
-        drawdown_percent: Number(drawdown.toFixed(2)),
-      } as never);
+    const { error } = await supabase.from("account_snapshots").insert({
+      trader_account_id: account.id,
+      equity,
+      balance: equity,
+      profit,
+      drawdown_percent: Number(drawdown.toFixed(2)),
+    } as never);
     setEquitySaving(null);
     if (error) return toast.error(error.message);
     setEquityDraft((d) => ({ ...d, [account.id]: "" }));
@@ -972,14 +963,12 @@ function useAdminDataHook() {
         return;
       }
       const phaseLabel = isPhase2 ? "Phase 2" : "Funded";
-      await supabase
-        .from("notifications")
-        .insert({
-          user_id: rejectTarget.user_id,
-          title: `❌ ${phaseLabel} Request Rejected`,
-          message: `Your ${phaseLabel} request for account ${rejectTarget.mt5_login} has been rejected. Reason: ${reason}`,
-          type: "error",
-        } as never);
+      await supabase.from("notifications").insert({
+        user_id: rejectTarget.user_id,
+        title: `❌ ${phaseLabel} Request Rejected`,
+        message: `Your ${phaseLabel} request for account ${rejectTarget.mt5_login} has been rejected. Reason: ${reason}`,
+        type: "error",
+      } as never);
       toast.success(`${phaseLabel} request rejected`);
       notifyEmail({
         type: "phase_rejected",
@@ -1034,14 +1023,12 @@ function useAdminDataHook() {
         .then(({ error: e }) => {
           if (e) console.error("[breach audit log] insert failed", e.message);
         });
-      await supabase
-        .from("notifications")
-        .insert({
-          user_id: breachTarget.user_id,
-          title: "❌ Account breached",
-          message: `Your account ${breachTarget.mt5_login} has been marked as breached. Reason: ${reason}`,
-          type: "error",
-        } as never);
+      await supabase.from("notifications").insert({
+        user_id: breachTarget.user_id,
+        title: "❌ Account breached",
+        message: `Your account ${breachTarget.mt5_login} has been marked as breached. Reason: ${reason}`,
+        type: "error",
+      } as never);
       toast.success("Account breached. It has been archived.");
       notifyEmail({ type: "breached", accountId: breachTarget.id, reason });
       setBreachTarget(null);
@@ -1061,14 +1048,12 @@ function useAdminDataHook() {
     }
     setWarning(true);
     try {
-      const { error } = await supabase
-        .from("notifications")
-        .insert({
-          user_id: warnTarget.user_id,
-          title: "⚠️ Trading Warning",
-          message: `Warning for account ${warnTarget.mt5_login}: ${reason}`,
-          type: "warning",
-        } as never);
+      const { error } = await supabase.from("notifications").insert({
+        user_id: warnTarget.user_id,
+        title: "⚠️ Trading Warning",
+        message: `Warning for account ${warnTarget.mt5_login}: ${reason}`,
+        type: "warning",
+      } as never);
       if (error) {
         toast.error(error.message);
         return;
@@ -1396,54 +1381,33 @@ function useAdminDataHook() {
       return toast.error("Login, password and server are required");
     }
     setDeliveringPartnerFree(true);
-    const challengeId = deliverPartnerFreeFor.challenge_id;
-    if (!challengeId) {
-      setDeliveringPartnerFree(false);
-      return toast.error("No challenge linked to this request.");
-    }
-    const accountSize = Number(
-      deliverPartnerFreeFor.challenges?.account_size ??
-        deliverPartnerFreeFor.account_size ??
-        1000000,
-    );
-    const { error } = await (supabase as any)
-      .from("partner_free_accounts")
-      .update({
-        status: "fulfilled",
-        mt5_login: partnerFreeForm.login.trim(),
-        mt5_password: partnerFreeForm.password.trim(),
-        investor_password: partnerFreeForm.investor.trim() || null,
-        mt5_server: partnerFreeForm.server.trim(),
-        fulfilled_at: new Date().toISOString(),
-      })
-      .eq("id", deliverPartnerFreeFor.id);
-    if (error) {
-      setDeliveringPartnerFree(false);
-      return toast.error(error.message);
-    }
-    const { error: taError } = await (supabase as any)
-      .from("trader_accounts")
-      .insert({
-        user_id: deliverPartnerFreeFor.partner_id,
-        challenge_id,
-        order_id: null,
-        mt5_login: partnerFreeForm.login.trim(),
-        mt5_password: partnerFreeForm.password.trim(),
-        investor_password: partnerFreeForm.investor.trim() || null,
-        mt5_server: partnerFreeForm.server.trim(),
-        starting_balance: accountSize,
-        current_equity: accountSize,
-        current_phase: 1,
-        status: "active",
-        provider: "exness-bot",
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session?.access_token) {
+        setDeliveringPartnerFree(false);
+        return toast.error("Please sign in again");
+      }
+      const res = await deliverPartnerFreeServer({
+        data: {
+          accessToken: sess.session.access_token,
+          claimId: deliverPartnerFreeFor.id,
+          mt5Login: partnerFreeForm.login.trim(),
+          mt5Password: partnerFreeForm.password.trim(),
+          mt5Server: partnerFreeForm.server.trim(),
+          investorPassword: partnerFreeForm.investor.trim() || undefined,
+        },
       });
-    setDeliveringPartnerFree(false);
-    if (taError) return toast.error(taError.message);
-    const chName = deliverPartnerFreeFor.challenges?.name ?? "Partner";
-    toast.success(`Delivered ${chName} partner account: login ${partnerFreeForm.login}`);
-    setDeliverPartnerFreeFor(null);
-    load();
-    loadPartners();
+      setDeliveringPartnerFree(false);
+      if (!res?.ok) return toast.error(res?.error ?? "Delivery failed");
+      const chName = deliverPartnerFreeFor.challenges?.name ?? "Partner";
+      toast.success(`Delivered ${chName} partner account: login ${res.login}`);
+      setDeliverPartnerFreeFor(null);
+      load();
+      loadPartners();
+    } catch (e) {
+      setDeliveringPartnerFree(false);
+      toast.error(e instanceof Error ? e.message : "Delivery failed");
+    }
   };
 
   const saveDiscountCode = async () => {
@@ -1456,23 +1420,19 @@ function useAdminDataHook() {
     if (!Number.isFinite(percent) || percent <= 0 || percent > 100)
       return toast.error("Discount must be 1-100%");
     setDiscountSaving("new");
-    const { error } = await (supabase as any)
-      .from("discount_codes")
-      .upsert(
-        {
-          code,
-          percent_off: percent,
-          max_redemptions: discountForm.max_redemptions
-            ? Number(discountForm.max_redemptions)
-            : null,
-          expires_at: discountForm.expires_at
-            ? new Date(discountForm.expires_at).toISOString()
-            : null,
-          is_active: discountForm.is_active,
-          challenge_id: discountForm.challenge_id || null,
-        },
-        { onConflict: "code" },
-      );
+    const { error } = await (supabase as any).from("discount_codes").upsert(
+      {
+        code,
+        percent_off: percent,
+        max_redemptions: discountForm.max_redemptions ? Number(discountForm.max_redemptions) : null,
+        expires_at: discountForm.expires_at
+          ? new Date(discountForm.expires_at).toISOString()
+          : null,
+        is_active: discountForm.is_active,
+        challenge_id: discountForm.challenge_id || null,
+      },
+      { onConflict: "code" },
+    );
     setDiscountSaving(null);
     if (error) return toast.error(error.message);
     toast.success("Promo discount saved");
@@ -1560,22 +1520,20 @@ function useAdminDataHook() {
       setDeliveringClaim(false);
       return toast.error(error.message);
     }
-    const { error: taError } = await (supabase as any)
-      .from("trader_accounts")
-      .insert({
-        user_id: deliverClaimFor.affiliate_id,
-        challenge_id: chMatch.id,
-        order_id: null,
-        mt5_login: claimForm.login.trim(),
-        mt5_password: claimForm.password.trim(),
-        investor_password: claimForm.investor.trim() || null,
-        mt5_server: claimForm.server.trim(),
-        starting_balance: accountSize,
-        current_equity: accountSize,
-        current_phase: 1,
-        status: "active",
-        provider: "exness-bot",
-      });
+    const { error: taError } = await (supabase as any).from("trader_accounts").insert({
+      user_id: deliverClaimFor.affiliate_id,
+      challenge_id: chMatch.id,
+      order_id: null,
+      mt5_login: claimForm.login.trim(),
+      mt5_password: claimForm.password.trim(),
+      investor_password: claimForm.investor.trim() || null,
+      mt5_server: claimForm.server.trim(),
+      starting_balance: accountSize,
+      current_equity: accountSize,
+      current_phase: 1,
+      status: "active",
+      provider: "exness-bot",
+    });
     setDeliveringClaim(false);
     if (taError) return toast.error(taError.message);
     toast.success(`Delivered free account: login ${claimForm.login}`);

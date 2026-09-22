@@ -1935,3 +1935,162 @@ export const grantGiveawayServer = createServerFn({ method: "POST" })
       return { ok: false as const, error: msg };
     }
   });
+
+// ---------------------------------------------------------------------------
+// Partner free-account delivery — create the trader_accounts row with the
+// service role so the delivered account reliably appears on the admin
+// Accounts tab and is returned by the partner's normal trader dashboard query
+// (user_id = partner_id), instead of depending on a client-side insert whose
+// failure left a "fulfilled" claim with no account behind.
+//
+// The DB trigger tg_partner_free_account_delivery fires on the pending ->
+// fulfilled status transition and already sends the partner notification +
+// telegram, so we don't duplicate those here.
+// ---------------------------------------------------------------------------
+const DeliverPartnerFreeInput = z.object({
+  accessToken: z.string().min(1),
+  claimId: z.string().uuid(),
+  mt5Login: z.string().min(1),
+  mt5Password: z.string().min(1),
+  mt5Server: z.string().min(1),
+  investorPassword: z.string().optional(),
+});
+
+export const deliverPartnerFreeServer = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => DeliverPartnerFreeInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const auth = await assertAdmin(data.accessToken);
+      if (!auth.ok) return auth;
+
+      const { data: claimRow, error: claimErr } = await supabaseAdmin
+        .from("partner_free_accounts")
+        .select("id, partner_id, challenge_id, status, mt5_login")
+        .eq("id", data.claimId)
+        .maybeSingle();
+      if (claimErr) return { ok: false as const, error: claimErr.message };
+      const claim = claimRow as unknown as {
+        id: string;
+        partner_id: string;
+        challenge_id: string | null;
+        status: string;
+        mt5_login: string | null;
+      } | null;
+      if (!claim) return { ok: false as const, error: "Partner free-account request not found" };
+      if (claim.status !== "pending" && claim.status !== "fulfilled") {
+        return { ok: false as const, error: `Cannot deliver a ${claim.status} request` };
+      }
+      if (!claim.challenge_id) {
+        return { ok: false as const, error: "No challenge linked to this request." };
+      }
+
+      const { data: chRow } = await supabaseAdmin
+        .from("challenges")
+        .select("id, name, account_size, currency")
+        .eq("id", claim.challenge_id)
+        .maybeSingle();
+      const challenge = chRow as unknown as {
+        id: string;
+        name: string;
+        account_size: number | null;
+        currency: string | null;
+      } | null;
+      if (!challenge) return { ok: false as const, error: "Linked challenge no longer exists." };
+
+      const accountSize = Number(challenge.account_size ?? 0);
+      if (!accountSize || accountSize <= 0) {
+        return { ok: false as const, error: "Challenge account size is invalid." };
+      }
+
+      // Idempotency: an account row may already exist for this claim (e.g. a
+      // previous delivery attempt that flipped the status but failed to link).
+      const { data: existingRow } = await supabaseAdmin
+        .from("trader_accounts")
+        .select("id, mt5_login")
+        .eq("user_id", claim.partner_id)
+        .eq("mt5_login", data.mt5Login.trim())
+        .maybeSingle();
+      const existingAccount = existingRow as unknown as { id: string; mt5_login: string } | null;
+
+      if (!existingAccount) {
+        // Create the account row first, then flip the claim to fulfilled. If
+        // the row insert fails, nothing is mutated and the error surfaces to
+        // the admin instead of leaving an orphaned "fulfilled" claim.
+        const { data: accountRow, error: insertErr } = await supabaseAdmin
+          .from("trader_accounts")
+          .insert({
+            user_id: claim.partner_id,
+            challenge_id: challenge.id,
+            mt5_login: data.mt5Login.trim(),
+            mt5_password: data.mt5Password.trim(),
+            investor_password: data.investorPassword?.trim() || null,
+            mt5_server: data.mt5Server.trim(),
+            currency: challenge.currency ?? "NGN",
+            starting_balance: accountSize,
+            current_equity: accountSize,
+            current_phase: 1,
+            status: "active",
+            provider: "exness-bot",
+          } as never)
+          .select("id")
+          .single();
+        if (insertErr || !accountRow) {
+          return {
+            ok: false as const,
+            error: insertErr?.message ?? "Failed to create the account",
+          };
+        }
+      }
+
+      // Fulfil the claim LAST — the DB trigger fires on the status transition
+      // and sends the partner notification + telegram. Self-heals claims that
+      // were already marked fulfilled but were missing their account row.
+      if (claim.status !== "fulfilled") {
+        const { error: fulfilErr } = await supabaseAdmin
+          .from("partner_free_accounts")
+          .update({
+            status: "fulfilled",
+            mt5_login: data.mt5Login.trim(),
+            mt5_password: data.mt5Password.trim(),
+            investor_password: data.investorPassword?.trim() || null,
+            mt5_server: data.mt5Server.trim(),
+            fulfilled_at: new Date().toISOString(),
+          })
+          .eq("id", claim.id);
+        if (fulfilErr) {
+          if (!existingAccount) {
+            await supabaseAdmin
+              .from("trader_accounts")
+              .delete()
+              .eq("user_id", claim.partner_id)
+              .eq("mt5_login", data.mt5Login.trim());
+          }
+          return { ok: false as const, error: fulfilErr.message };
+        }
+      }
+
+      await supabaseAdmin.from("mt5_worker_events").insert({
+        worker_id: auth.userId,
+        event_type: "partner_free_delivery",
+        payload: {
+          claim_id: claim.id,
+          partner_id: claim.partner_id,
+          challenge_id: challenge.id,
+          challenge_name: challenge.name,
+          account_size: accountSize,
+          mt5_login: data.mt5Login.trim(),
+          mt5_server: data.mt5Server.trim(),
+        },
+      } as never);
+
+      return {
+        ok: true as const,
+        login: data.mt5Login.trim(),
+        server: data.mt5Server.trim(),
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Delivery failed";
+      console.error("[deliverPartnerFreeServer] unexpected", msg);
+      return { ok: false as const, error: msg };
+    }
+  });
